@@ -8,7 +8,8 @@ import urllib
 
 from karabo import middlelayer
 from karabo.middlelayer import (
-    AccessMode, Assignment, background, Device, isSet, KaraboValue, State)
+    AccessMode, Assignment, background, Device, isSet, KaraboValue, State,
+    String)
 
 
 def decodeURL(url, handle):
@@ -41,11 +42,12 @@ def decodeURL(url, handle):
 
 
 class BaseScpiDevice(Device):
-    url = middlelayer.String(
+    url = String(
         displayedName="Instrument URL",
         description="""The URL of the instrument. Supported URL schemes are
             socket://hostname:port/ and file:///filename""",
-        assignment=Assignment.MANDATORY, accessMode=AccessMode.INITONLY)
+        assignment=Assignment.MANDATORY,
+        accessMode=AccessMode.INITONLY)
 
     def __init__(self, configuration):
         self.connected = False
@@ -72,14 +74,17 @@ class BaseScpiDevice(Device):
         def sc(self, value=None):
             if self.connected:
                 return (yield from self.sendCommand(descr, value))
+
         return sc
 
     def writeread(self, write, read):
         write = write.encode('utf8')
+
         @coroutine
         def inner():
             self.writer.write(write)
             return (yield from read)
+
         return shield(inner())
 
     @coroutine
@@ -91,7 +96,7 @@ class BaseScpiDevice(Device):
         with (yield from self.lock):
             cmd = self.createCommand(descriptor, value)
             newvalue = yield from self.writeread(
-		cmd, self.readCommandResult(descriptor, value))
+                cmd, self.readCommandResult(descriptor, value))
         if newvalue is not None:
             descriptor.__set__(self, newvalue)
 
@@ -102,7 +107,7 @@ class BaseScpiDevice(Device):
         with (yield from self.lock):
             q = self.createQuery(descriptor)
             value = yield from self.writeread(
-		q, self.readQueryResult(descriptor))
+                q, self.readQueryResult(descriptor))
         descriptor.__set__(self, value)
 
     command_format = "{alias} {value}\n"
@@ -114,8 +119,8 @@ class BaseScpiDevice(Device):
                 .format(alias=descriptor.alias,
                         device=self,
                         value="" if value is None
-                                 else descriptor.toString(
-					descriptor.toKaraboValue(value).value)))
+                        else descriptor.toString(
+                            descriptor.toKaraboValue(value).value)))
 
     @coroutine
     def readCommandResult(self, descriptor, value=None):
@@ -146,7 +151,7 @@ class BaseScpiDevice(Device):
 
     @coroutine
     def connect(self):
-        '''Connect to the instrument'''
+        """Connect to the instrument"""
         url = urllib.parse.urlsplit(self.url)
         if url.scheme == "file":
             socket = open(
