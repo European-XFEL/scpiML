@@ -220,7 +220,10 @@ class ScpiAutoDevice(BaseScpiDevice):
 
     @coroutine
     def onDestruction(self):
-        self.writer.close()
+        try:
+            self.writer.close()
+        except AttributeError:
+            pass
 
 
 class ScpiDevice(BaseScpiDevice):
