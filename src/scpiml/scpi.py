@@ -80,34 +80,30 @@ class BaseScpiDevice(Device):
     def writeread(self, write, read):
         write = write.encode('utf8')
 
-        @coroutine
-        def inner():
-            self.writer.write(write)
-            return (yield from read)
+        async def inner():
+            async with self.lock:
+               self.writer.write(write)
+               return (await read)
 
         return shield(inner())
 
-    @coroutine
-    def sendCommand(self, descriptor, value=None):
+    async def sendCommand(self, descriptor, value=None):
         if not self.connected:
             return
         if isinstance(descriptor, KaraboValue):
             descriptor = descriptor.descriptor
-        with (yield from self.lock):
-            cmd = self.createCommand(descriptor, value)
-            newvalue = yield from self.writeread(
-                cmd, self.readCommandResult(descriptor, value))
+        cmd = self.createCommand(descriptor, value)
+        newvalue = await self.writeread(
+            cmd, self.readCommandResult(descriptor, value))
         if newvalue is not None:
             descriptor.__set__(self, newvalue)
 
-    @coroutine
-    def sendQuery(self, descriptor):
+    async def sendQuery(self, descriptor):
         if isinstance(descriptor, KaraboValue):
             descriptor = descriptor.descriptor
-        with (yield from self.lock):
-            q = self.createQuery(descriptor)
-            value = yield from self.writeread(
-                q, self.readQueryResult(descriptor))
+        q = self.createQuery(descriptor)
+        value = await self.writeread(
+            q, self.readQueryResult(descriptor))
         descriptor.__set__(self, value)
 
     command_format = "{alias} {value}\n"
