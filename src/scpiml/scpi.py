@@ -82,8 +82,8 @@ class BaseScpiDevice(Device):
 
         async def inner():
             async with self.lock:
-               self.writer.write(write)
-               return (await read)
+                self.writer.write(write)
+                return (await read)
 
         return shield(inner())
 
