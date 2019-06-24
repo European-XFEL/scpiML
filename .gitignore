@@ -1,0 +1,4 @@
+dist/
+build/
+src/*.egg*
+__pycache__
