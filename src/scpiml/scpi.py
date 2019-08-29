@@ -9,7 +9,7 @@ import urllib
 from karabo import middlelayer
 from karabo.middlelayer import (
     AccessMode, Assignment, background, Device, Double, isSet, KaraboValue,
-    State, String)
+    State, String, Unit)
 
 
 def decodeURL(url, handle):
@@ -55,11 +55,14 @@ class BaseScpiDevice(Device):
         assignment=Assignment.MANDATORY,
         accessMode=AccessMode.INITONLY)
 
-    timeout = Double(displayedName="Timeout", defaultValue=0.1)
+    timeout = Double(
+        displayedName="Timeout",
+        defaultValue=0.1,
+        unitSymbol=Unit.SECOND,
+        accessMode=AccessMode.INITONLY)
 
     def __init__(self, configuration):
         self.connected = False
-        self.poll_dic = {}
         super().__init__(configuration)
         self.lock = Lock()
         self.allowLF = False
@@ -140,10 +143,11 @@ class BaseScpiDevice(Device):
             yield from self.readline()
             return value
         except TimeoutError:
-            self.status = "Timeout while waiting for reply to {} {}".format(
+            msg = "Timeout while waiting for reply to {} {}".format(
                 descriptor.key, descriptor.alias)
+            self.status = msg
             self.state = State.ERROR
-            raise TimeoutError
+            raise TimeoutError(msg)
 
     query_format = "{alias}?\n"
 
