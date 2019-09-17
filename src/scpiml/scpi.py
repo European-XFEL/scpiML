@@ -235,7 +235,7 @@ class BaseScpiDevice(Device):
 
     @coroutine
     def readline(self):
-        line = yield from wait_for(self._readline(), timeout=self.timeout)
+        line = yield from wait_for(self._readline(), timeout=self.timeout.value)
         return line
 
     @coroutine
