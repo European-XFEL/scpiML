@@ -57,7 +57,9 @@ class BaseScpiDevice(Device):
 
     timeout = Double(
         displayedName="Timeout",
-        defaultValue=0.1,
+        description="""The timeout on polling. If negative, the response
+            will be waited forever.""",
+        defaultValue=-1.,
         unitSymbol=Unit.SECOND,
         accessMode=AccessMode.INITONLY)
 
@@ -225,17 +227,23 @@ class BaseScpiDevice(Device):
     @coroutine
     def pollOne(self, descriptor):
         while True:
+            logged = False
             try:
                 yield from self.sendQuery(descriptor)
                 yield from sleep(descriptor.poll)
             except TimeoutError:
-                # stop polling on timeout
-                self.status = "Timeout while polling {}".format(descriptor.key)
-                break
+                if not logged:
+                    # log only once on timeout
+                    msg = "Timeout while polling {}".format(descriptor.key)
+                    self.status = msg
+                    self.logger.error(msg)
+                    logged = True
 
     @coroutine
     def readline(self):
-        line = yield from wait_for(self._readline(), timeout=self.timeout.value)
+        # if self.timeout is negative, wait indefinitely.
+        timeout = None if self.timeout < 0 else self.timeout
+        line = yield from wait_for(self._readline(), timeout=timeout)
         return line
 
     @coroutine
