@@ -242,7 +242,7 @@ class BaseScpiDevice(Device):
     @coroutine
     def readline(self):
         # if self.timeout is negative, wait indefinitely.
-        timeout = None if self.timeout < 0 else self.timeout
+        timeout = None if self.timeout.value < 0 else self.timeout.value
         line = yield from wait_for(self._readline(), timeout=timeout)
         return line
 
