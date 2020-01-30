@@ -57,9 +57,10 @@ class BaseScpiDevice(Device):
 
     timeout = Double(
         displayedName="Timeout",
-        description="""The timeout on polling. If negative, the response
-            will be waited forever.""",
-        defaultValue=-1.,
+        description="""Max time to wait for an answer to a command/query. If negative, the response
+            will be waited forever. Devices whose protocol foresee commands w/o answer will not 
+            work with negative timeouts! """,
+        defaultValue=1.,
         unitSymbol=Unit.SECOND,
         accessMode=AccessMode.INITONLY)
 
