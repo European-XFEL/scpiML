@@ -1,6 +1,6 @@
 from asyncio import (
     coroutine, get_event_loop, Lock, open_connection, Protocol, shield, sleep,
-    StreamReader, StreamReaderProtocol, StreamWriter)
+    StreamReader, StreamReaderProtocol, StreamWriter, TimeoutError, wait_for)
 from itertools import chain
 import os
 import termios
@@ -8,8 +8,8 @@ import urllib
 
 from karabo import middlelayer
 from karabo.middlelayer import (
-    AccessMode, Assignment, background, Device, isSet, KaraboValue, State,
-    String)
+    AccessMode, Assignment, background, Device, Double, isSet, KaraboValue,
+    State, String, Unit)
 
 
 def decodeURL(url, handle):
@@ -42,11 +42,27 @@ def decodeURL(url, handle):
 
 
 class BaseScpiDevice(Device):
+    """Base Device Class for SCPI interface """
+
+    # some devices might not require a read after a command or a write
+    # set this class attribute to False in this case.
+    readOnCommand = True
+
     url = String(
         displayedName="Instrument URL",
         description="""The URL of the instrument. Supported URL schemes are
             socket://hostname:port/ and file:///filename""",
         assignment=Assignment.MANDATORY,
+        accessMode=AccessMode.INITONLY)
+
+    timeout = Double(
+        displayedName="Timeout",
+        description="""Max time to wait for an answer to a command/query. 
+            If negative, the response will be waited for forever. Devices 
+            whose protocol foresee commands w/o answer will not work with 
+            negative timeouts! """,
+        defaultValue=1.,
+        unitSymbol=Unit.SECOND,
         accessMode=AccessMode.INITONLY)
 
     def __init__(self, configuration):
@@ -93,8 +109,11 @@ class BaseScpiDevice(Device):
         if isinstance(descriptor, KaraboValue):
             descriptor = descriptor.descriptor
         cmd = self.createCommand(descriptor, value)
+        read = self.readCommandResult(descriptor, value)
+        if not self.readOnCommand:
+            read = self.setResultNoRead(descriptor, value)
         newvalue = await self.writeread(
-            cmd, self.readCommandResult(descriptor, value))
+            cmd, read)
         if newvalue is not None:
             descriptor.__set__(self, newvalue)
 
@@ -119,9 +138,20 @@ class BaseScpiDevice(Device):
                             descriptor.toKaraboValue(value).value)))
 
     @coroutine
-    def readCommandResult(self, descriptor, value=None):
-        yield from self.readline()
+    def setResultNoRead(self, descriptor, value=None):
         return value
+
+    @coroutine
+    def readCommandResult(self, descriptor, value=None):
+        try:
+            yield from self.readline()
+            return value
+        except TimeoutError:
+            msg = "Timeout while waiting for reply to {} {}".format(
+                descriptor.key, descriptor.alias)
+            self.status = msg
+            self.state = State.ERROR
+            raise TimeoutError(msg)
 
     query_format = "{alias}?\n"
 
@@ -131,8 +161,18 @@ class BaseScpiDevice(Device):
 
     @coroutine
     def readQueryResult(self, descriptor):
-        line = yield from self.readline()
-        return self.parseResult(descriptor, line.decode("ascii"))
+        try:
+            line = yield from self.readline()
+            reply = line.decode("ascii")
+            if reply:
+                return self.parseResult(descriptor, line.decode("ascii"))
+            else:
+                return None
+        except TimeoutError:
+            self.status = "Timeout while waiting for reply to {}".format(
+                descriptor.key)
+            self.state = State.ERROR
+            raise TimeoutError
 
     def parseResult(self, descriptor, line):
         return descriptor.fromstring(line)
@@ -146,8 +186,7 @@ class BaseScpiDevice(Device):
             self.reader.feed_data(d)
 
     @coroutine
-    def connect(self):
-        """Connect to the instrument"""
+    def open_connection(self):
         url = urllib.parse.urlsplit(self.url)
         if url.scheme == "file":
             socket = open(
@@ -165,6 +204,11 @@ class BaseScpiDevice(Device):
                 url.hostname, url.port)
         else:
             raise ValueError("Unknown url scheme {}".format(url.scheme))
+
+    @coroutine
+    def connect(self):
+        """Connect to the instrument"""
+        yield from self.open_connection()
         self.state = State.NORMAL
         self.connected = True
 
@@ -185,11 +229,27 @@ class BaseScpiDevice(Device):
     @coroutine
     def pollOne(self, descriptor):
         while True:
-            yield from self.sendQuery(descriptor)
-            yield from sleep(descriptor.poll)
+            logged = False
+            try:
+                yield from self.sendQuery(descriptor)
+                yield from sleep(descriptor.poll)
+            except TimeoutError:
+                if not logged:
+                    # log only once on timeout
+                    msg = "Timeout while polling {}".format(descriptor.key)
+                    self.status = msg
+                    self.logger.error(msg)
+                    logged = True
 
     @coroutine
     def readline(self):
+        # if self.timeout is negative, wait indefinitely.
+        timeout = None if self.timeout.value < 0 else self.timeout.value
+        line = yield from wait_for(self._readline(), timeout=timeout)
+        return line
+
+    @coroutine
+    def _readline(self):
         line = []
 
         while True:
