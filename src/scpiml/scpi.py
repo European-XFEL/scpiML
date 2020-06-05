@@ -234,8 +234,6 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         elif url.scheme == "socket":
             self.reader, self.writer = await open_connection(
                 url.hostname, url.port)
-        elif url.scheme == "test":
-            pass  # tests inject their own readers and writers
         else:
             raise ValueError("Unknown url scheme {}".format(url.scheme))
 
