@@ -63,6 +63,8 @@ class ScpiConfigurable(Configurable):
         async def sc(self, value=None):
             if self.parent is not None and self.parent.connected:
                 return (await self.parent.sendCommand(descr, value, self))
+            else:
+                setattr(self, descr.key, value)
         return sc
 
     async def connect(self, parent):
@@ -115,15 +117,6 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         super().__init__(configuration)
         self.lock = Lock()
         self.allowLF = False
-
-    @classmethod
-    def sender(cls, descr):
-        @coroutine
-        def sc(self, value=None):
-            if self.connected:
-                return (yield from self.sendCommand(descr, value))
-
-        return sc
 
     def writeread(self, write, read):
         write = write.encode('utf8')
@@ -299,7 +292,7 @@ class ScpiAutoDevice(BaseScpiDevice):
     @coroutine
     def _run(self, **kwargs):
         yield from super()._run(**kwargs)
-        yield from self.connect()
+        background(self.connect())
 
     @coroutine
     def onDestruction(self):
