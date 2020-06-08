@@ -101,9 +101,9 @@ class BaseScpiDevice(ScpiConfigurable, Device):
 
     timeout = Double(
         displayedName="Timeout",
-        description="""Max time to wait for an answer to a command/query. 
-            If negative, the response will be waited for forever. Devices 
-            whose protocol foresee commands w/o answer will not work with 
+        description="""Max time to wait for an answer to a command/query.
+            If negative, the response will be waited for forever. Devices
+            whose protocol foresee commands w/o answer will not work with
             negative timeouts! """,
         defaultValue=1.,
         unitSymbol=Unit.SECOND,
@@ -123,8 +123,8 @@ class BaseScpiDevice(ScpiConfigurable, Device):
 
         async def inner():
             async with self.lock:
-               self.writer.write(write)
-               return (await read)
+                self.writer.write(write)
+                return (await read)
 
         return shield(inner())
 
@@ -154,7 +154,8 @@ class BaseScpiDevice(ScpiConfigurable, Device):
     commandReadBack = False
 
     def createChildCommand(self, descriptor, value=None, child=None):
-        assert child is None or child is self, "default implementation does not handle children"
+        assert child is None or child is self, \
+            "default implementation does not handle children"
         return self.createCommand(descriptor, value)
 
     def createCommand(self, descriptor, value=None):
@@ -184,7 +185,8 @@ class BaseScpiDevice(ScpiConfigurable, Device):
     query_format = "{alias}?\n"
 
     def createChildQuery(self, descriptor, child=None):
-        assert child is None or child is self, "default implementation does not handle children"
+        assert child is None or child is self, \
+            "default implementation does not handle children"
         return self.createQuery(descriptor)
 
     def createQuery(self, descriptor):
