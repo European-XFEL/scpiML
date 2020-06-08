@@ -169,8 +169,8 @@ class BaseScpiDevice(ScpiConfigurable, Device):
     async def sendQuery(self, descriptor, child=None):
         """send a query out
 
-        This method creates a query using `createChildQuery` and read its results
-        using `readQueryResult`.
+        This method creates a query using `createChildQuery` and read its
+        results using `readQueryResult`.
 
         The same caveats for usage and reimplementation apply as for
         `sendCommand`.

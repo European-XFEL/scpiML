@@ -9,7 +9,7 @@ from scpiml import ScpiAutoDevice, ScpiConfigurable
 
 class ManageDevice:
     def __init__(self, cls):
-        self.device = cls({"url": "socket://localhost:35232", "_deviceId_": "scpi"})
+        self.device = cls({"url": "socket://127.0.0.1:35232", "_deviceId_": "scpi"})
 
     async def __aenter__(self):
         await self.device.startInstance()
@@ -26,7 +26,7 @@ class Tests(DeviceTest):
     def lifetimeManager(cls):
         client = Device({"_deviceId_": "client"})
         cls.server = cls.loop.run_until_complete(
-            start_server(cls.connected_cb, "localhost", 35232))
+            start_server(cls.connected_cb, "127.0.0.1", 35232))
         with cls.deviceManager(lead=client):
             yield
 
@@ -216,6 +216,7 @@ class Tests(DeviceTest):
                     while proxy.readonly != i:
                         await waitUntilNew(proxy.readonly)
                 t1 = time()
+            await self.assertRead(b"R?\n")
             self.assertLess(t1 - t0, 0.05)
             self.assertGreater(t1 - t0, 0.01)
 
