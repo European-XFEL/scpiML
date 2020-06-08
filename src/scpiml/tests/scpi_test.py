@@ -2,9 +2,9 @@ from asyncio import start_server, sleep, gather
 from contextlib import contextmanager
 from time import time
 
-from karabo.middlelayer import State, Double, AccessMode, getDevice, Device, Slot, waitUntilNew, background
+from karabo.middlelayer import State, Double, AccessMode, getDevice, Node, Device, Slot, waitUntilNew, background
 from karabo.middlelayer_api.tests.eventloop import async_tst, DeviceTest
-from scpiml import ScpiAutoDevice
+from scpiml import ScpiAutoDevice, ScpiConfigurable
 
 
 class ManageDevice:
@@ -218,3 +218,37 @@ class Tests(DeviceTest):
                 t1 = time()
             self.assertLess(t1 - t0, 0.05)
             self.assertGreater(t1 - t0, 0.01)
+
+    @async_tst
+    async def test_node(self):
+        class Channel(ScpiConfigurable):
+            initonly = Double(accessMode=AccessMode.INITONLY, alias="I", defaultValue=1)
+            readonly = Double(accessMode=AccessMode.READONLY, alias="R")
+            readonly.poll = 0.01
+            rw = Double(alias="RW")
+            rw.readOnConnect = True
+
+        class Device(ScpiAutoDevice):
+            node = Node(Channel, alias="yuko")
+
+            def createChildQuery(self, descr, child):
+                 return f"{child.alias}.{descr.alias}?\n"
+
+            def createChildCommand(self, descr, value, child):
+                 return f"{child.alias}.{descr.alias} {value.value}\n"
+
+        manager = ManageDevice(Device)
+        async with manager as device:
+            proxy = await getDevice("scpi")
+            with proxy:
+                await sleep(0.02)
+                await self.assertRead(b"yuko.I 1.0\n")
+                self.writer.write(b"\n")
+                await self.assertRead(b"yuko.RW?\n")
+                self.writer.write(b"7\n")
+                await self.assertRead(b"yuko.R?\n")
+                self.writer.write(b"8\n")
+                await self.assertRead(b"yuko.R?\n")
+
+                self.assertEqual(proxy.node.rw, 7)
+                self.assertEqual(proxy.node.readonly, 8)
