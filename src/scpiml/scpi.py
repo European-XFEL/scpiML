@@ -8,7 +8,7 @@ This Karabo device is very flexible in that it can be modified to communicate
 with many controllers, whether they claim to follow SCPI or not.
 """
 from asyncio import (
-    coroutine, get_event_loop, Lock, open_connection, Protocol, shield, sleep,
+    get_event_loop, Lock, open_connection, Protocol, shield, sleep,
     StreamReader, StreamReaderProtocol, StreamWriter, TimeoutError, wait_for)
 from itertools import chain
 import os
@@ -221,8 +221,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
                         else descriptor.toString(
                             descriptor.toKaraboValue(value).value)))
 
-    @coroutine
-    def readCommandResult(self, descriptor, value=None):
+    async def readCommandResult(self, descriptor, value=None):
         """read the result of a command and return it
 
         Unfortunately, there is no generally accepted way on what to retur
@@ -252,7 +251,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         if not self.readOnCommand:
             return value
         try:
-            yield from self.readline()
+            await self.readline()
             return value
         except TimeoutError:
             msg = "Timeout while waiting for reply to {} {}".format(
@@ -288,8 +287,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         return (getattr(descriptor, "queryFormat", self.query_format)
                 .format(alias=descriptor.alias, device=self))
 
-    @coroutine
-    def readQueryResult(self, descriptor):
+    async def readQueryResult(self, descriptor):
         """Read the result from a query
 
         The default implementation reads one line, parses it and returns the
@@ -298,7 +296,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         some advanced parsing of the returned string.
         """
         try:
-            line = yield from self.readline()
+            line = await self.readline()
             reply = line.decode("ascii")
             if reply:
                 return self.parseResult(descriptor, line.decode("ascii"))
@@ -361,13 +359,12 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         self.connected = True
         await super().connect(self)
 
-    @coroutine
-    def pollOne(self, descriptor, child):
+    async def pollOne(self, descriptor, child):
         while True:
             logged = False
             try:
-                yield from self.sendQuery(descriptor, child)
-                yield from sleep(descriptor.poll)
+                await self.sendQuery(descriptor, child)
+                await sleep(descriptor.poll)
             except TimeoutError:
                 if not logged:
                     # log only once on timeout
@@ -376,8 +373,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
                     self.logger.error(msg)
                     logged = True
 
-    @coroutine
-    def readline(self):
+    async def readline(self):
         """Read one input line
 
         This reads one line from the input. A pretty flexible definition of a
@@ -402,15 +398,14 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         """
         # if self.timeout is negative, wait indefinitely.
         timeout = None if self.timeout.value < 0 else self.timeout.value
-        line = yield from wait_for(self._readline(), timeout=timeout)
+        line = await wait_for(self._readline(), timeout=timeout)
         return line
 
-    @coroutine
-    def _readline(self):
+    async def _readline(self):
         line = []
 
         while True:
-            c = yield from self.readChar()
+            c = await self.readChar()
             if self.allowLF and c == b"\n":
                 self.allowLF = False
             elif c in b"\n\r\0":
@@ -420,20 +415,17 @@ class BaseScpiDevice(ScpiConfigurable, Device):
             else:
                 line.append(c)
 
-    @coroutine
-    def readChar(self):
-        return (yield from self.reader.read(1))
+    async def readChar(self):
+        return (await self.reader.read(1))
 
 
 class ScpiAutoDevice(BaseScpiDevice):
     """A ScpiDevice that automatically connects"""
-    @coroutine
-    def _run(self, **kwargs):
-        yield from super()._run(**kwargs)
+    async def _run(self, **kwargs):
+        await super()._run(**kwargs)
         background(self.connect())
 
-    @coroutine
-    def onDestruction(self):
+    async def onDestruction(self):
         try:
             self.writer.close()
         except AttributeError:
@@ -442,6 +434,5 @@ class ScpiAutoDevice(BaseScpiDevice):
 
 class ScpiDevice(BaseScpiDevice):
     @middlelayer.Slot()
-    @coroutine
-    def connect(self):
-        yield from super().connect()
+    async def connect(self):
+        await super().connect()
