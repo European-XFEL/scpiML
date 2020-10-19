@@ -2,7 +2,7 @@ test:
     image: europeanxfel/karabo-ci:centos-7
     script:
         - pushd $HOME
-        - curl -f0 exflserv05.desy.de/karabo/karaboFramework/tags/2.9.1/karabo-2.9.1-Release-CentOS-7-x86_64.sh >karabo.sh
+        - curl -f0 exflserv05.desy.de/karabo/karaboFramework/tags/latest_build/karabo-latest_build-Release-CentOS-7-x86_64.sh >karabo.sh
         - bash karabo.sh --prefix=$HOME
         - source karabo/activate
         - popd

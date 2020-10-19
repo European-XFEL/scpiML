@@ -85,6 +85,7 @@ class ScpiConfigurable(Configurable):
                 value.alias = descriptor.alias
                 await value.connect(parent)
                 continue
+
             if getattr(descriptor, "writeOnConnect",
                        descriptor.accessMode is AccessMode.INITONLY):
                 value = getattr(self, k)
@@ -175,6 +176,8 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         The same caveats for usage and reimplementation apply as for
         `sendCommand`.
         """
+        if not self.connected:
+            return
         if isinstance(descriptor, KaraboValue):
             descriptor = descriptor.descriptor
         q = self.createChildQuery(descriptor, child)
