@@ -1,5 +1,14 @@
+"""A base class for SCPI-like devices
+
+SCPI is a standard command set for programmable instruments. Many controllers
+with a command port (be it serial, USB or Ethernet) claim to adhere to this
+standard, while most actually do not.
+
+This Karabo device is very flexible in that it can be modified to communicate
+with many controllers, whether they claim to follow SCPI or not.
+"""
 from asyncio import (
-    coroutine, get_event_loop, Lock, open_connection, Protocol, shield, sleep,
+    get_event_loop, Lock, open_connection, Protocol, shield, sleep,
     StreamReader, StreamReaderProtocol, StreamWriter, TimeoutError, wait_for)
 from itertools import chain
 import os
@@ -8,8 +17,8 @@ import urllib
 
 from karabo import middlelayer
 from karabo.middlelayer import (
-    AccessMode, Assignment, background, Device, Double, isSet, KaraboValue,
-    State, String, Unit)
+    AccessMode, Assignment, background, Configurable,
+    Device, Double, isSet, KaraboValue, Node, State, String, Unit)
 
 
 def decodeURL(url, handle):
@@ -41,12 +50,57 @@ def decodeURL(url, handle):
     termios.tcsetattr(handle, termios.TCSANOW, ios)
 
 
-class BaseScpiDevice(Device):
-    """Base Device Class for SCPI interface """
+class ScpiConfigurable(Configurable):
+    parent = None
 
-    # some devices might not require a read after a command or a write
-    # set this class attribute to False in this case.
-    readOnCommand = True
+    @classmethod
+    def register(cls, name, dict):
+        super().register(name, dict)
+        attrs = chain.from_iterable(c._attrs for c in cls.__mro__
+                                    if issubclass(c, ScpiConfigurable))
+        cls._scpiattrs = [a for a in attrs
+                          if getattr(cls, a).alias is not None]
+        for attr in cls._scpiattrs:
+            descr = getattr(cls, attr)
+            if ("method" in descr.__dict__ or "setter" in descr.__dict__
+                    or isinstance(descr, Node)):
+                continue  # the user already decorated a function
+            setattr(cls, attr, descr(cls.sender(descr)))
+
+    @classmethod
+    def sender(cls, descr):
+        async def sc(self, value=None):
+            if self.parent is not None and self.parent.connected:
+                return (await self.parent.sendCommand(descr, value, self))
+            else:
+                setattr(self, descr.key, value)
+        return sc
+
+    async def connect(self, parent):
+        self.parent = parent
+        for k in self._scpiattrs:
+            descriptor = getattr(self.__class__, k)
+            if isinstance(descriptor, Node):
+                value = getattr(self, k)
+                value.alias = descriptor.alias
+                await value.connect(parent)
+                continue
+
+            if getattr(descriptor, "writeOnConnect",
+                       descriptor.accessMode is AccessMode.INITONLY):
+                value = getattr(self, k)
+                if isSet(value):
+                    await self.parent.sendCommand(descriptor, value, self)
+                else:
+                    await self.parent.sendQuery(descriptor, self)
+            if getattr(descriptor, "readOnConnect", False):
+                await self.parent.sendQuery(descriptor, self)
+            if getattr(descriptor, "poll", False):
+                background(self.parent.pollOne(descriptor, self))
+
+
+class BaseScpiDevice(ScpiConfigurable, Device):
+    """Base Device Class for SCPI interface """
 
     url = String(
         displayedName="Instrument URL",
@@ -57,41 +111,22 @@ class BaseScpiDevice(Device):
 
     timeout = Double(
         displayedName="Timeout",
-        description="""Max time to wait for an answer to a command/query. 
-            If negative, the response will be waited for forever. Devices 
-            whose protocol foresee commands w/o answer will not work with 
+        description="""Max time to wait for an answer to a command/query.
+            If negative, the response will be waited for forever. Devices
+            whose protocol foresee commands w/o answer will not work with
             negative timeouts! """,
         defaultValue=1.,
         unitSymbol=Unit.SECOND,
         accessMode=AccessMode.INITONLY)
+
+    # do not use the following line, it is legacy.
+    readOnCommand = True
 
     def __init__(self, configuration):
         self.connected = False
         super().__init__(configuration)
         self.lock = Lock()
         self.allowLF = False
-
-    @classmethod
-    def register(cls, name, dict):
-        super().register(name, dict)
-        attrs = chain.from_iterable(c._attrs for c in cls.__mro__
-                                    if issubclass(c, BaseScpiDevice))
-        cls._scpiattrs = [a for a in attrs
-                          if getattr(cls, a).alias is not None]
-        for attr in cls._scpiattrs:
-            descr = getattr(cls, attr)
-            if "method" in descr.__dict__ or "setter" in descr.__dict__:
-                continue  # the user already decorated a function
-            descr(cls.sender(descr))
-
-    @classmethod
-    def sender(cls, descr):
-        @coroutine
-        def sc(self, value=None):
-            if self.connected:
-                return (yield from self.sendCommand(descr, value))
-
-        return sc
 
     def writeread(self, write, read):
         write = write.encode('utf8')
@@ -103,29 +138,81 @@ class BaseScpiDevice(Device):
 
         return shield(inner())
 
-    async def sendCommand(self, descriptor, value=None):
+    async def sendCommand(self, descriptor, value=None, child=None):
+        """send a command out
+
+        This method creats a command using `createChildCommand` and reads back
+        its result using `readCommandResult`, and may then immediately query
+        the value if `commandReadBack` is set.
+
+        This is the method where locking takes place, which may become
+        complicated. You should reimplement this method only if you really
+        know what you are doing, otherwise better reimplement the methods
+        mentioned above.
+
+        You may, however, call this method to your likings. But be aware not to
+        do this from within the methods just mentioned, as this would destroy
+        the locking mechanism.
+        """
         if not self.connected:
             return
         if isinstance(descriptor, KaraboValue):
             descriptor = descriptor.descriptor
-        cmd = self.createCommand(descriptor, value)
-        read = self.readCommandResult(descriptor, value)
-        if not self.readOnCommand:
-            read = self.setResultNoRead(descriptor, value)
+        cmd = self.createChildCommand(descriptor, value, child)
         newvalue = await self.writeread(
-            cmd, read)
+            cmd, self.readCommandResult(descriptor, value))
         if newvalue is not None:
-            descriptor.__set__(self, newvalue)
+            descriptor.__set__(self if child is None else child, newvalue)
+        elif (getattr(descriptor, "commandReadBack", self.commandReadBack)
+              and value is not None):
+            await self.sendQuery(descriptor, child)
 
-    async def sendQuery(self, descriptor):
+    async def sendQuery(self, descriptor, child=None):
+        """send a query out
+
+        This method creates a query using `createChildQuery` and read its
+        results using `readQueryResult`.
+
+        The same caveats for usage and reimplementation apply as for
+        `sendCommand`.
+        """
+        if not self.connected:
+            return
         if isinstance(descriptor, KaraboValue):
             descriptor = descriptor.descriptor
-        q = self.createQuery(descriptor)
+        q = self.createChildQuery(descriptor, child)
         value = await self.writeread(
             q, self.readQueryResult(descriptor))
-        descriptor.__set__(self, value)
+        descriptor.__set__(self if child is None else child, value)
 
     command_format = "{alias} {value}\n"
+    commandReadBack = False
+
+    def createChildCommand(self, descriptor, value=None, child=None):
+        """create a command
+
+        return the command string used to set the value for `descriptor`
+        in `child`.  child is `None` or `self` if we are querying for the
+        device. `value` is `None` for Slots, and contains the value to be
+        set for all other parameters.
+
+        Often all you need to do is to set the class variable `command_format`,
+        which uses the Python format method to format the string, to define
+        how a query is build. You may even define query formats on a
+        per-descriptor basis, as in::
+
+            specialInput = Double()
+            specialInput.commandFormat = "SET super special {alias}!\n"
+
+        In the query formats, *alias* represents the descriptor's alias,
+        while *device* refers to the device this method is called for,
+        and {value} is the value to be set. Note that {value} is set to
+        be the empty string for Slots, which is what is needed in most
+        cases.
+        """
+        assert child is None or child is self, \
+            "default implementation does not handle children"
+        return self.createCommand(descriptor, value)
 
     def createCommand(self, descriptor, value=None):
         if isinstance(descriptor, KaraboValue):
@@ -137,14 +224,37 @@ class BaseScpiDevice(Device):
                         else descriptor.toString(
                             descriptor.toKaraboValue(value).value)))
 
-    @coroutine
-    def setResultNoRead(self, descriptor, value=None):
-        return value
+    async def readCommandResult(self, descriptor, value=None):
+        """read the result of a command and return it
 
-    @coroutine
-    def readCommandResult(self, descriptor, value=None):
+        Unfortunately, there is no generally accepted way on what to retur
+        for a command. The default implementation reads one line, ignores it
+        and returns the *value*.
+
+        A command may be the setting of a value to *value*, or it may be
+        the calling of a slot, in which case *value* is *None*.
+
+        Some devices do not return anything at all, in which case you may
+        find it best to write::
+
+            async def readCommandResult(self, descriptor, value):
+                return value
+
+        Others return the same way as they return for queries::
+
+            async def readCommandResult(self, descriptor, value):
+                if value is not None:
+                    return (await self.readQueryResult(descriptor))
+
+        Often devices do not return anything useful, instead one wishes to
+        read back the parameter with a query after each setting. This
+        can be achieved by setting the `commandReadBack` attribute either
+        globally or per descriptor.
+        """
+        if not self.readOnCommand:
+            return value
         try:
-            yield from self.readline()
+            await self.readline()
             return value
         except TimeoutError:
             msg = "Timeout while waiting for reply to {} {}".format(
@@ -155,14 +265,41 @@ class BaseScpiDevice(Device):
 
     query_format = "{alias}?\n"
 
+    def createChildQuery(self, descriptor, child=None):
+        """create a query
+
+        return the query used to query for `descriptor` in `child`.
+        child is `None` or `self` if we are querying for the device.
+
+        Often all you need to do is to set the class variable `query_format`,
+        which uses the Python format method to format the string, to define
+        how a query is build. You may even define query formats on a
+        per-descriptor basis, as in::
+
+            specialInput = Double()
+            specialInput.queryFormat = "GET super special {alias}!\n"
+
+        In the query formats, *alias* represents the descriptor's alias,
+        while *device* refers to the device this method is called for.
+        """
+        assert child is None or child is self, \
+            "default implementation does not handle children"
+        return self.createQuery(descriptor)
+
     def createQuery(self, descriptor):
         return (getattr(descriptor, "queryFormat", self.query_format)
                 .format(alias=descriptor.alias, device=self))
 
-    @coroutine
-    def readQueryResult(self, descriptor):
+    async def readQueryResult(self, descriptor):
+        """Read the result from a query
+
+        The default implementation reads one line, parses it and returns the
+        result. Unless you need to do some complicated handshaking, you
+        should rather reimplement `parseResult` if all you need is to have
+        some advanced parsing of the returned string.
+        """
         try:
-            line = yield from self.readline()
+            line = await self.readline()
             reply = line.decode("ascii")
             if reply:
                 return self.parseResult(descriptor, line.decode("ascii"))
@@ -175,6 +312,19 @@ class BaseScpiDevice(Device):
             raise TimeoutError
 
     def parseResult(self, descriptor, line):
+        """Parse the data returned from a query
+
+        given the string in line and a descriptor, return the value this
+        should correspond to. The default implementation is good a parsing
+        the standard data types, but if the device encodes data weirdly,
+        you may want to reimplement this method.
+
+        As an example, if the device returned integers encoded in hex,
+        you may write::
+
+            def parseResult(self, descriptor, line):
+                return int(line, base=16)
+        """
         return descriptor.fromstring(line)
 
     def data_arrived(self):
@@ -185,8 +335,8 @@ class BaseScpiDevice(Device):
         else:
             self.reader.feed_data(d)
 
-    @coroutine
-    def open_connection(self):
+    async def open_connection(self):
+        """Connect to the instrument"""
         url = urllib.parse.urlsplit(self.url)
         if url.scheme == "file":
             socket = open(
@@ -195,44 +345,29 @@ class BaseScpiDevice(Device):
             decodeURL(url, socket)
             self.reader = StreamReader()
             loop = get_event_loop()
-            yield from loop.connect_read_pipe(
+            await loop.connect_read_pipe(
                 lambda: StreamReaderProtocol(self.reader), socket)
-            trans, proto = yield from loop.connect_write_pipe(Protocol, socket)
+            trans, proto = await loop.connect_write_pipe(Protocol, socket)
             self.writer = StreamWriter(trans, proto, self.reader, loop)
         elif url.scheme == "socket":
-            self.reader, self.writer = yield from open_connection(
+            self.reader, self.writer = await open_connection(
                 url.hostname, url.port)
         else:
             raise ValueError("Unknown url scheme {}".format(url.scheme))
 
-    @coroutine
-    def connect(self):
+    async def connect(self):
         """Connect to the instrument"""
-        yield from self.open_connection()
+        await self.open_connection()
         self.state = State.NORMAL
         self.connected = True
+        await super().connect(self)
 
-        for k in self._scpiattrs:
-            descriptor = getattr(self.__class__, k)
-            if getattr(descriptor, "writeOnConnect",
-                       descriptor.accessMode is AccessMode.INITONLY):
-                value = getattr(self, k)
-                if isSet(value):
-                    yield from self.sendCommand(descriptor, value)
-                else:
-                    yield from self.sendQuery(descriptor)
-            if getattr(descriptor, "readOnConnect", False):
-                yield from self.sendQuery(descriptor)
-            if getattr(descriptor, "poll", False):
-                background(self.pollOne(descriptor))
-
-    @coroutine
-    def pollOne(self, descriptor):
+    async def pollOne(self, descriptor, child):
         while True:
             logged = False
             try:
-                yield from self.sendQuery(descriptor)
-                yield from sleep(descriptor.poll)
+                await self.sendQuery(descriptor, child)
+                await sleep(descriptor.poll)
             except TimeoutError:
                 if not logged:
                     # log only once on timeout
@@ -241,19 +376,39 @@ class BaseScpiDevice(Device):
                     self.logger.error(msg)
                     logged = True
 
-    @coroutine
-    def readline(self):
+    async def readline(self):
+        """Read one input line
+
+        This reads one line from the input. A pretty flexible definition of a
+        line is used, it may end in a carriage return, a line feed, or both,
+        or in a byte 0. This method returns a bytes string excluding the
+        end-of-line character found.
+
+        If your device has an incompatible line ending definition, reimplement
+        this method. As an example, if your device sends ETX as a line ending,
+        you may write::
+
+            async def readline(self):
+                ret = await self.reader.readuntil(b"\3")  # this is ETX
+                return ret[:-1]
+
+        Any kind of filtering also may be done here, as an example on could
+        filter out all special characters::
+
+            async def readline(self):
+                ret = await self.reader.readuntil(b"\n")
+                return bytes(ch for ch in ret if ch >= ord(" "))
+        """
         # if self.timeout is negative, wait indefinitely.
         timeout = None if self.timeout.value < 0 else self.timeout.value
-        line = yield from wait_for(self._readline(), timeout=timeout)
+        line = await wait_for(self._readline(), timeout=timeout)
         return line
 
-    @coroutine
-    def _readline(self):
+    async def _readline(self):
         line = []
 
         while True:
-            c = yield from self.readChar()
+            c = await self.readChar()
             if self.allowLF and c == b"\n":
                 self.allowLF = False
             elif c in b"\n\r\0":
@@ -263,19 +418,17 @@ class BaseScpiDevice(Device):
             else:
                 line.append(c)
 
-    @coroutine
-    def readChar(self):
-        return (yield from self.reader.read(1))
+    async def readChar(self):
+        return (await self.reader.read(1))
 
 
 class ScpiAutoDevice(BaseScpiDevice):
-    @coroutine
-    def _run(self, **kwargs):
-        yield from super()._run(**kwargs)
-        yield from self.connect()
+    """A ScpiDevice that automatically connects"""
+    async def _run(self, **kwargs):
+        await super()._run(**kwargs)
+        background(self.connect())
 
-    @coroutine
-    def onDestruction(self):
+    async def onDestruction(self):
         try:
             self.writer.close()
         except AttributeError:
@@ -284,6 +437,5 @@ class ScpiAutoDevice(BaseScpiDevice):
 
 class ScpiDevice(BaseScpiDevice):
     @middlelayer.Slot()
-    @coroutine
-    def connect(self):
-        yield from super().connect()
+    async def connect(self):
+        await super().connect()
