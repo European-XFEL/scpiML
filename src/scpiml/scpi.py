@@ -363,18 +363,21 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         await super().connect(self)
 
     async def pollOne(self, descriptor, child):
+        communication_timeout = False
         while True:
-            logged = False
             try:
                 await self.sendQuery(descriptor, child)
                 await sleep(descriptor.poll)
+                if communication_timeout:  # readout recovered
+                    self.status = ""
+                    communication_timeout = False
             except TimeoutError:
-                if not logged:
+                if not communication_timeout:
                     # log only once on timeout
                     msg = "Timeout while polling {}".format(descriptor.key)
                     self.status = msg
                     self.logger.error(msg)
-                    logged = True
+                    communication_timeout = True
 
     async def readline(self):
         """Read one input line
