@@ -368,6 +368,10 @@ class BaseScpiDevice(ScpiConfigurable, Device):
             try:
                 await self.sendQuery(descriptor, child)
                 await sleep(descriptor.poll)
+                if logged:
+                    if self.status != "":
+                    self.status = ""
+                    logged = false
             except TimeoutError:
                 if not logged:
                     # log only once on timeout
