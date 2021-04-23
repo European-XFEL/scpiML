@@ -363,8 +363,8 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         await super().connect(self)
 
     async def pollOne(self, descriptor, child):
+        logged = False
         while True:
-            logged = False
             try:
                 await self.sendQuery(descriptor, child)
                 await sleep(descriptor.poll)
