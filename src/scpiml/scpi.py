@@ -127,6 +127,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         super().__init__(configuration)
         self.lock = Lock()
         self.allowLF = False
+        self.timeout_logged = False  # flag on occured readout timeout
 
     def writeread(self, write, read):
         write = write.encode('utf8')
@@ -363,22 +364,21 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         await super().connect(self)
 
     async def pollOne(self, descriptor, child):
-        logged = False
         while True:
             try:
                 await self.sendQuery(descriptor, child)
                 await sleep(descriptor.poll)
-                if logged:
+                if timeout_logged:  # readout recovered
                     if self.status != "":
-                    self.status = ""
-                    logged = false
+                        self.status = ""
+                    self.timeout_logged = false
             except TimeoutError:
-                if not logged:
+                if not self.timeout_logged:
                     # log only once on timeout
                     msg = "Timeout while polling {}".format(descriptor.key)
                     self.status = msg
                     self.logger.error(msg)
-                    logged = True
+                    self.timeout_logged = True
 
     async def readline(self):
         """Read one input line
