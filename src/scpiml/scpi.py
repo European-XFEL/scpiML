@@ -369,8 +369,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
                 await self.sendQuery(descriptor, child)
                 await sleep(descriptor.poll)
                 if communication_timeout:  # readout recovered
-                    if self.status != "":
-                        self.status = ""
+                    self.status = ""
                     communication_timeout = False
             except TimeoutError:
                 if not communication_timeout:
