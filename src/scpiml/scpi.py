@@ -18,7 +18,15 @@ import urllib
 from karabo import middlelayer
 from karabo.middlelayer import (
     AccessMode, Assignment, background, Configurable,
-    Device, Double, isSet, KaraboValue, Node, State, String, Unit)
+    Device, Double, isSet, KaraboValue, Node, State, String,
+    Unit)
+try:
+    # Karabo >= 2.11
+    from karabo.middlelayer import string_from_hashtype
+    use_descriptor = False
+except ImportError:
+    # Karabo <= 2.10
+    use_descriptor = True
 
 
 def decodeURL(url, handle):
@@ -217,12 +225,20 @@ class BaseScpiDevice(ScpiConfigurable, Device):
     def createCommand(self, descriptor, value=None):
         if isinstance(descriptor, KaraboValue):
             descriptor = descriptor.descriptor
+
+        if value is None:
+            string_var = ""
+        else:
+            if use_descriptor:
+                string_var = descriptor.toString(
+                    descriptor.toKaraboValue(value).value)
+            else:
+                string_var = string_from_hashtype(
+                    descriptor.toKaraboValue(value).value)
         return (getattr(descriptor, "commandFormat", self.command_format)
                 .format(alias=descriptor.alias,
                         device=self,
-                        value="" if value is None
-                        else descriptor.toString(
-                            descriptor.toKaraboValue(value).value)))
+                        value=string_var))
 
     async def readCommandResult(self, descriptor, value=None):
         """read the result of a command and return it
