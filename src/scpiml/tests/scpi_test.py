@@ -1,8 +1,10 @@
-from asyncio import start_server, sleep, gather
+from asyncio import start_server, sleep
 from contextlib import contextmanager
 from time import time
 
-from karabo.middlelayer import State, Double, AccessMode, getDevice, Node, Device, Slot, waitUntilNew, background
+from karabo.middlelayer import (
+    State, Double, AccessMode, getDevice, Node, Device, Slot, waitUntil,
+    background)
 from karabo.middlelayer_api.tests.eventloop import async_tst, DeviceTest
 from scpiml import ScpiAutoDevice, ScpiConfigurable
 
@@ -69,8 +71,7 @@ class Tests(DeviceTest):
                 self.writer.write(b"\n")
                 await self.assertRead(b"RW 7.0\n")
                 self.writer.write(b"25\n\n")
-                while proxy.rw != 7:
-                    await sleep(0.001)
+                await waitUntil(lambda: proxy.rw == 7)
 
     @async_tst
     async def test_simple_woc(self):
@@ -107,12 +108,10 @@ class Tests(DeviceTest):
                 await sleep(0.02)
                 await self.assertRead(b"R?\n")
                 self.writer.write(b"5\n")
-                while proxy.readonly != 5:
-                    await waitUntilNew(proxy.readonly)
+                await waitUntil(lambda: proxy.readonly == 5)
                 await self.assertRead(b"RW?\n")
                 self.writer.write(b"7\n")
-                while proxy.rw != 7:
-                    await waitUntilNew(proxy.rw)
+                await waitUntil(lambda: proxy.rw == 7)
 
     @async_tst
     async def test_read_command(self):
@@ -133,13 +132,11 @@ class Tests(DeviceTest):
                 await sleep(0.02)
                 await self.assertRead(b"I 1.0\n")
                 self.writer.write(b"5\n")
-                while proxy.initonly != 5:
-                    await waitUntilNew(proxy.initonly)
+                await waitUntil(lambda: proxy.initonly == 5)
                 proxy.rw = 6
                 await self.assertRead(b"RW 6.0\n")
                 self.writer.write(b"9\n")
-                while proxy.rw != 9:
-                    await waitUntilNew(proxy.rw)
+                await waitUntil(lambda: proxy.rw == 9)
                 back = background(proxy.slot())
                 await self.assertRead(b"S \n")
                 await sleep(0.02)
@@ -166,8 +163,7 @@ class Tests(DeviceTest):
                 await sleep(0.02)
                 await self.assertRead(b"RW?\n")
                 self.writer.write(b"1letters2do3not4matterE")
-                while proxy.rw != 1234:
-                    await waitUntilNew(proxy.rw)
+                await waitUntil(lambda: proxy.rw == 1234)
 
     @async_tst
     async def test_format(self):
@@ -213,8 +209,7 @@ class Tests(DeviceTest):
                 for i in range(10):
                     await self.assertRead(b"R?\n")
                     self.writer.write(f"{i}\n".encode("ascii"))
-                    while proxy.readonly != i:
-                        await waitUntilNew(proxy.readonly)
+                    await waitUntil(lambda: proxy.readonly == i)
                 t1 = time()
             await self.assertRead(b"R?\n")
             self.assertLess(t1 - t0, 0.05)
@@ -232,14 +227,16 @@ class Tests(DeviceTest):
         class Device(ScpiAutoDevice):
             node = Node(Channel, alias="yuko")
 
-            def createChildQuery(self, descr, child):
-                 return f"{child.alias}.{descr.alias}?\n"
+            parentProp = Double(alias="PARENT_RW")
+            parentProp.readOnConnect = True
 
-            def createChildCommand(self, descr, value, child):
-                 return f"{child.alias}.{descr.alias} {value.value}\n"
+            def createNodeQuery(self, leaf, node):
+                return f"{node.alias}.{leaf.alias}?\n"
 
-        manager = ManageDevice(Device)
-        async with manager as device:
+            def createNodeCommand(self, leaf, value, node):
+                return f"{node.alias}.{leaf.alias} {value.value}\n"
+
+        async with ManageDevice(Device):
             proxy = await getDevice("scpi")
             with proxy:
                 await sleep(0.02)
@@ -249,7 +246,72 @@ class Tests(DeviceTest):
                 self.writer.write(b"7\n")
                 await self.assertRead(b"yuko.R?\n")
                 self.writer.write(b"8\n")
-                await self.assertRead(b"yuko.R?\n")
-
+                await self.assertRead(b"PARENT_RW?\n")
+                self.writer.write(b"-1\n")
+                await waitUntil(lambda: proxy.parentProp == -1)
+                self.assertEqual(proxy.parentProp, -1)
+                self.assertEqual(proxy.node.initonly, 1)
                 self.assertEqual(proxy.node.rw, 7)
                 self.assertEqual(proxy.node.readonly, 8)
+
+    @async_tst
+    async def test_nested_node(self):
+        class FormatNode(ScpiConfigurable):
+            def get_prefix(self):
+                if self == self.parent:
+                    return ""
+                return f"{self.alias}."
+
+            def createNodeQuery(self, leaf, node):
+                return f"{self.get_prefix()}{node.alias}.{leaf.alias}?\n"
+
+            def createNodeCommand(self, leaf, value, node):
+                return f"{self.get_prefix()}{node.alias}.{leaf.alias} {value.value}\n"
+
+        class SubChannel(FormatNode):
+            initonly = Double(accessMode=AccessMode.INITONLY, alias="I", defaultValue=1)
+            readonly = Double(accessMode=AccessMode.READONLY, alias="R")
+            readonly.poll = 0.01
+            rw = Double(alias="RW")
+            rw.readOnConnect = True
+
+        class Channel(FormatNode):
+            subnode = Node(SubChannel, alias="souschef")
+            initonly = Double(accessMode=AccessMode.INITONLY, alias="I", defaultValue=2)
+            readonly = Double(accessMode=AccessMode.READONLY, alias="R")
+            readonly.poll = 0.01
+            rw = Double(alias="RW")
+            rw.readOnConnect = True
+
+        class Device(FormatNode, ScpiAutoDevice):
+            node = Node(Channel, alias="chef")
+
+            parentProp = Double(alias="PARENT_RW")
+            parentProp.readOnConnect = True
+
+        async with ManageDevice(Device) as device:
+            proxy = await getDevice("scpi")
+            with proxy:
+                await sleep(0.02)
+                await self.assertRead(b"chef.souschef.I 1.0\n")
+                self.writer.write(b"\n")
+                await self.assertRead(b"chef.souschef.RW?\n")
+                self.writer.write(b"7\n")
+                await self.assertRead(b"chef.souschef.R?\n")
+                self.writer.write(b"8\n")
+                await self.assertRead(b"chef.I 2.0\n")
+                self.writer.write(b"\n")
+                await self.assertRead(b"chef.RW?\n")
+                self.writer.write(b"9\n")
+                await self.assertRead(b"chef.R?\n")
+                self.writer.write(b"10\n")
+                await self.assertRead(b"PARENT_RW?\n")
+                self.writer.write(b"-1\n")
+                await waitUntil(lambda: proxy.parentProp == -1)
+                self.assertEqual(proxy.parentProp, -1)
+                self.assertEqual(proxy.node.subnode.initonly, 1)
+                self.assertEqual(proxy.node.subnode.rw, 7)
+                self.assertEqual(proxy.node.subnode.readonly, 8)
+                self.assertEqual(proxy.node.initonly, 2)
+                self.assertEqual(proxy.node.rw, 9)
+                self.assertEqual(proxy.node.readonly, 10)

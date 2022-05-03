@@ -60,6 +60,7 @@ def decodeURL(url, handle):
 
 class ScpiConfigurable(Configurable):
     parent = None
+    connected = None
 
     @classmethod
     def register(cls, name, dict):
@@ -78,20 +79,22 @@ class ScpiConfigurable(Configurable):
     @classmethod
     def sender(cls, descr):
         async def sc(self, value=None):
-            if self.parent is not None and self.parent.connected:
-                return (await self.parent.sendCommand(descr, value, self))
+            root = self.get_root()
+            if root.connected:
+                return (await root.sendCommand(descr, value, self))
             else:
                 setattr(self, descr.key, value)
         return sc
 
     async def connect(self, parent):
         self.parent = parent
+        self.connected = parent.connected
         for k in self._scpiattrs:
             descriptor = getattr(self.__class__, k)
             if isinstance(descriptor, Node):
                 value = getattr(self, k)
                 value.alias = descriptor.alias
-                await value.connect(parent)
+                await value.connect(self)
                 continue
 
             if getattr(descriptor, "writeOnConnect",
@@ -106,50 +109,10 @@ class ScpiConfigurable(Configurable):
             if getattr(descriptor, "poll", False):
                 background(self.parent.pollOne(descriptor, self))
 
-
-class BaseScpiDevice(ScpiConfigurable, Device):
-    """Base Device Class for SCPI interface """
-
-    url = String(
-        displayedName="Instrument URL",
-        description="""The URL of the instrument. Supported URL schemes are
-            socket://hostname:port/ and file:///filename""",
-        assignment=Assignment.MANDATORY,
-        accessMode=AccessMode.INITONLY)
-
-    timeout = Double(
-        displayedName="Timeout",
-        description="""Max time to wait for an answer to a command/query.
-            If negative, the response will be waited for forever. Devices
-            whose protocol foresee commands w/o answer will not work with
-            negative timeouts! """,
-        defaultValue=1.,
-        unitSymbol=Unit.SECOND,
-        accessMode=AccessMode.INITONLY)
-
-    # do not use the following line, it is legacy.
-    readOnCommand = True
-
-    def __init__(self, configuration):
-        self.connected = False
-        super().__init__(configuration)
-        self.lock = Lock()
-        self.allowLF = False
-
-    def writeread(self, write, read):
-        write = write.encode('utf8')
-
-        async def inner():
-            async with self.lock:
-                self.writer.write(write)
-                return (await read)
-
-        return shield(inner())
-
     async def sendCommand(self, descriptor, value=None, child=None):
         """send a command out
 
-        This method creats a command using `createChildCommand` and reads back
+        This method creates a command using `createChildCommand` and reads back
         its result using `readCommandResult`, and may then immediately query
         the value if `commandReadBack` is set.
 
@@ -167,10 +130,11 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         if isinstance(descriptor, KaraboValue):
             descriptor = descriptor.descriptor
         cmd = self.createChildCommand(descriptor, value, child)
-        newvalue = await self.writeread(
+        newvalue = await self.get_root().writeread(
             cmd, self.readCommandResult(descriptor, value))
         if newvalue is not None:
-            descriptor.__set__(self if child is None else child, newvalue)
+            child = self if child is None else child
+            descriptor.__set__(child, newvalue)
         elif (getattr(descriptor, "commandReadBack", self.commandReadBack)
               and value is not None):
             await self.sendQuery(descriptor, child)
@@ -189,12 +153,16 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         if isinstance(descriptor, KaraboValue):
             descriptor = descriptor.descriptor
         q = self.createChildQuery(descriptor, child)
-        value = await self.writeread(
+        value = await self.get_root().writeread(
             q, self.readQueryResult(descriptor))
-        descriptor.__set__(self if child is None else child, value)
+        child = self if child is None else child
+        descriptor.__set__(child, value)
 
     command_format = "{alias} {value}\n"
     commandReadBack = False
+
+    # do not use the following line, it is legacy.
+    readOnCommand = True
 
     def createChildCommand(self, descriptor, value=None, child=None):
         """create a command
@@ -218,9 +186,85 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         be the empty string for Slots, which is what is needed in most
         cases.
         """
-        assert child is None or child is self, \
+        if child is None or child is self:
+            return self.createCommand(descriptor, value)
+        return self.createNodeCommand(descriptor, value, child)
+
+    def createNodeCommand(self, leaf, value, node):
+        """Implement this in the derived class if nodes are needed
+
+        Parameters:
+            leaf: the descriptor of the leaf inside the node
+            value: the KaraboValue of the property leaf that will be applied
+                   or command to be set
+            node: the descriptor of the node
+
+        One can implement this interface as such::
+
+            class SourceChannel(ScpiConfigurable):
+                offset = Double(
+                    displayedName='Voltage Offset',
+                    alias="VOLT:OFFS",
+                    unitSymbol=Unit.VOLT
+                )
+
+            class NodedDevice(ScpiAutoDevice):
+                source1 = Node(SourceChannel, alias="SOURce1")
+
+                def createNodeQuery(self, leaf, node):
+                    return f"{node.alias}:{leaf.alias}?\n"
+
+                def createNodeCommand(self, leaf, value, node):
+                    return f"{node.alias}:{leaf.alias} {value.value}\n"
+
+        The query and command for the property `source1.offset` will be::
+
+            "SOURce1:VOLT:OFFS?\n"
+            "SOURce1:VOLT:OFFS VALUE\n"
+
+        for nested nodes, the `createNodeQuery` and `createNodeCommand` need
+        to be implemented in the nodes as well. Depending on the syntax needed
+        by the hardware, one can generalize by subclassing `ScpiConfigurable`
+        as in::
+
+            class FormatNode(ScpiConfigurable):
+                def get_prefix(self):
+                    if self == self.parent:
+                        return ""
+                    return f"{self.alias}."
+
+                def createNodeQuery(self, leaf, node):
+                    return f"{self.get_prefix()}{node.alias}:{leaf.alias}?\n"
+
+                def createNodeCommand(self, leaf, value, node):
+                    prefix = self.get_prefix()
+                    return f"{prefix}{node.alias}:{leaf.alias} {value.value}\n"
+
+
+            class VoltChannel(FormatNode):
+                offset = Double(
+                    displayedName='Voltage Offset',
+                    alias="OFFS",
+                    unitSymbol=Unit.VOLT
+                )
+
+
+            class SourceChannel(FormatNode):
+                volt = Node(SourceChannel, alias="VOLT")
+
+
+            class NodedDevice(FormatNode, ScpiAutoDevice):
+                source1 = Node(SourceChannel, alias="SOURce1")
+
+        The query and command for the property `source1.volt.offset` will be::
+
+            "SOURce1:VOLT:OFFS?\n"
+            "SOURce1:VOLT:OFFS VALUE\n"
+
+        """
+        raise NotImplementedError(
             "default implementation does not handle children"
-        return self.createCommand(descriptor, value)
+        )
 
     def createCommand(self, descriptor, value=None):
         if isinstance(descriptor, KaraboValue):
@@ -270,7 +314,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         if not self.readOnCommand:
             return value
         try:
-            await self.readline()
+            await self.get_root().readline()
             return value
         except TimeoutError:
             msg = "Timeout while waiting for reply to {} {}".format(
@@ -282,7 +326,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
     query_format = "{alias}?\n"
 
     def createChildQuery(self, descriptor, child=None):
-        """create a query
+        """creates a query
 
         return the query used to query for `descriptor` in `child`.
         child is `None` or `self` if we are querying for the device.
@@ -298,9 +342,22 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         In the query formats, *alias* represents the descriptor's alias,
         while *device* refers to the device this method is called for.
         """
-        assert child is None or child is self, \
+        if child is None or child is self:
+            return self.createQuery(descriptor)
+        return self.createNodeQuery(descriptor, child)
+
+    def createNodeQuery(self, leaf, node):
+        """Implement this in the derived class if nodes are needed
+
+        Parameters:
+            leaf: the descriptor of the leaf inside the node
+            node: the descriptor of the node
+
+        see: inline documentation for `createNodeCommand`
+        """
+        raise NotImplementedError(
             "default implementation does not handle children"
-        return self.createQuery(descriptor)
+        )
 
     def createQuery(self, descriptor):
         return (getattr(descriptor, "queryFormat", self.query_format)
@@ -315,7 +372,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         some advanced parsing of the returned string.
         """
         try:
-            line = await self.readline()
+            line = await self.get_root().readline()
             reply = line.decode("ascii")
             if reply:
                 return self.parseResult(descriptor, line.decode("ascii"))
@@ -326,6 +383,23 @@ class BaseScpiDevice(ScpiConfigurable, Device):
                 descriptor.key)
             self.state = State.ERROR
             raise TimeoutError
+
+    async def pollOne(self, descriptor, child):
+        communication_timeout = False
+        while True:
+            try:
+                await self.sendQuery(descriptor, child)
+                await sleep(descriptor.poll)
+                if communication_timeout:  # readout recovered
+                    self.status = ""
+                    communication_timeout = False
+            except TimeoutError:
+                if not communication_timeout:
+                    # log only once on timeout
+                    msg = "Timeout while polling {}".format(descriptor.key)
+                    self.status = msg
+                    self.logger.error(msg)
+                    communication_timeout = True
 
     def parseResult(self, descriptor, line):
         """Parse the data returned from a query
@@ -342,6 +416,43 @@ class BaseScpiDevice(ScpiConfigurable, Device):
                 return int(line, base=16)
         """
         return descriptor.fromstring(line)
+
+
+class BaseScpiDevice(ScpiConfigurable, Device):
+    """Base Device Class for SCPI interface """
+
+    url = String(
+        displayedName="Instrument URL",
+        description="""The URL of the instrument. Supported URL schemes are
+            socket://hostname:port/ and file:///filename""",
+        assignment=Assignment.MANDATORY,
+        accessMode=AccessMode.INITONLY)
+
+    timeout = Double(
+        displayedName="Timeout",
+        description="""Max time to wait for an answer to a command/query.
+            If negative, the response will be waited for forever. Devices
+            whose protocol foresee commands w/o answer will not work with
+            negative timeouts! """,
+        defaultValue=1.,
+        unitSymbol=Unit.SECOND,
+        accessMode=AccessMode.INITONLY)
+
+    def __init__(self, configuration):
+        self.connected = False
+        super().__init__(configuration)
+        self.lock = Lock()
+        self.allowLF = False
+
+    def writeread(self, write, read):
+        write = write.encode('utf8')
+
+        async def inner():
+            async with self.lock:
+                self.writer.write(write)
+                return (await read)
+
+        return shield(inner())
 
     def data_arrived(self):
         """input data from a file (i.e., not a socket)"""
@@ -377,23 +488,6 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         self.state = State.NORMAL
         self.connected = True
         await super().connect(self)
-
-    async def pollOne(self, descriptor, child):
-        communication_timeout = False
-        while True:
-            try:
-                await self.sendQuery(descriptor, child)
-                await sleep(descriptor.poll)
-                if communication_timeout:  # readout recovered
-                    self.status = ""
-                    communication_timeout = False
-            except TimeoutError:
-                if not communication_timeout:
-                    # log only once on timeout
-                    msg = "Timeout while polling {}".format(descriptor.key)
-                    self.status = msg
-                    self.logger.error(msg)
-                    communication_timeout = True
 
     async def readline(self):
         """Read one input line
