@@ -392,7 +392,8 @@ class ScpiConfigurable(Configurable):
                 if descriptor.poll is True:
                     sleep_time = self.pollingInterval.value
                 else:
-                    assert descriptor.poll > 0, "polling interval must be positive"
+                    assert descriptor.poll > 0, \
+                        "polling interval must be positive"
                     sleep_time = descriptor.poll
                 await sleep(sleep_time)
                 if communication_timeout:  # readout recovered
