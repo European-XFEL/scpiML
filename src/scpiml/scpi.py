@@ -96,6 +96,7 @@ class ScpiConfigurable(Configurable):
                 value.alias = descriptor.alias
                 await value.connect(self)
                 continue
+            await self.flush()
 
             if getattr(descriptor, "writeOnConnect",
                        descriptor.accessMode is AccessMode.INITONLY):
@@ -108,6 +109,9 @@ class ScpiConfigurable(Configurable):
                 await self.parent.sendQuery(descriptor, self)
             if getattr(descriptor, "poll", False):
                 background(self.parent.pollOne(descriptor, self))
+
+    async def flush(self):
+        """ can be implemented in the derived class """
 
     async def sendCommand(self, descriptor, value=None, child=None):
         """send a command out
