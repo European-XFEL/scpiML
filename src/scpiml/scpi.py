@@ -89,6 +89,7 @@ class ScpiConfigurable(Configurable):
     async def connect(self, parent):
         self.parent = parent
         self.connected = parent.connected
+        await self.flush()
         for k in self._scpiattrs:
             descriptor = getattr(self.__class__, k)
             if isinstance(descriptor, Node):
@@ -96,7 +97,6 @@ class ScpiConfigurable(Configurable):
                 value.alias = descriptor.alias
                 await value.connect(self)
                 continue
-            await self.flush()
 
             if getattr(descriptor, "writeOnConnect",
                        descriptor.accessMode is AccessMode.INITONLY):
