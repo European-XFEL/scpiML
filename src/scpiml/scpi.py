@@ -89,6 +89,7 @@ class ScpiConfigurable(Configurable):
     async def connect(self, parent):
         self.parent = parent
         self.connected = parent.connected
+        await self.onConnect()
         for k in self._scpiattrs:
             descriptor = getattr(self.__class__, k)
             if isinstance(descriptor, Node):
@@ -108,6 +109,9 @@ class ScpiConfigurable(Configurable):
                 await self.parent.sendQuery(descriptor, self)
             if getattr(descriptor, "poll", False):
                 background(self.parent.pollOne(descriptor, self))
+
+    async def onConnect(self):
+        """ can be implemented in the derived class """
 
     async def sendCommand(self, descriptor, value=None, child=None):
         """send a command out
