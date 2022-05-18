@@ -389,7 +389,13 @@ class ScpiConfigurable(Configurable):
         while True:
             try:
                 await self.sendQuery(descriptor, child)
-                await sleep(descriptor.poll)
+                if descriptor.poll is True:
+                    sleep_time = self.pollingInterval.value
+                else:
+                    assert descriptor.poll > 0, \
+                        "polling interval must be positive"
+                    sleep_time = descriptor.poll
+                await sleep(sleep_time)
                 if communication_timeout:  # readout recovered
                     self.status = ""
                     communication_timeout = False
@@ -437,6 +443,15 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         defaultValue=1.,
         unitSymbol=Unit.SECOND,
         accessMode=AccessMode.INITONLY)
+
+    pollingInterval = Double(
+        displayedName="Polling Interval",
+        description="The minimum polling interval to be used for parameters "
+                    "that do not have an hard-coded one.",
+        defaultValue=1.,
+        unitSymbol=Unit.SECOND,
+        minInc=0.05,
+        maxInc=30.)
 
     def __init__(self, configuration):
         self.connected = False
