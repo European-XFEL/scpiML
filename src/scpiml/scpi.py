@@ -468,12 +468,8 @@ class BaseScpiDevice(ScpiConfigurable, Device):
 
         async def inner():
             async with self.lock:
-                try:
-                    self.writer.write(write)
-                    return (await read)
-                except ConnectionResetError:
-                    await self.close_connection()
-                    return
+                self.writer.write(write)
+                return (await read)
 
         return shield(inner())
 
@@ -506,7 +502,6 @@ class BaseScpiDevice(ScpiConfigurable, Device):
             raise ValueError("Unknown url scheme {}".format(url.scheme))
 
     async def close_connection(self):
-        self.reader
         self.writer.close()
         await self.writer.wait_closed()
         self.connected = False
@@ -543,11 +538,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         """
         # if self.timeout is negative, wait indefinitely.
         timeout = None if self.timeout.value < 0 else self.timeout.value
-        try:
-            line = await wait_for(self._readline(), timeout=timeout)
-        except ConnectionResetError:
-            await self.close_connection()
-            return
+        line = await wait_for(self._readline(), timeout=timeout)
 
         return line
 
@@ -566,7 +557,11 @@ class BaseScpiDevice(ScpiConfigurable, Device):
                 line.append(c)
 
     async def readChar(self):
-        return (await self.reader.read(1))
+        try:
+            return (await self.reader.read(1))
+        except ConnectionError:
+            await self.close_connection()
+            return
 
 
 class ScpiAutoDevice(BaseScpiDevice):
