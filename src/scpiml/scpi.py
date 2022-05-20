@@ -468,8 +468,12 @@ class BaseScpiDevice(ScpiConfigurable, Device):
 
         async def inner():
             async with self.lock:
-                self.writer.write(write)
-                return (await read)
+                try:
+                    self.writer.write(write)
+                    return (await read)
+                except ConnectionResetError:
+                    await self.close_connection()
+                    return
 
         return shield(inner())
 
@@ -500,6 +504,12 @@ class BaseScpiDevice(ScpiConfigurable, Device):
                 url.hostname, url.port)
         else:
             raise ValueError("Unknown url scheme {}".format(url.scheme))
+
+    async def close_connection(self):
+        self.reader
+        self.writer.close()
+        await self.writer.wait_closed()
+        self.connected = False
 
     async def connect(self):
         """Connect to the instrument"""
@@ -533,7 +543,12 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         """
         # if self.timeout is negative, wait indefinitely.
         timeout = None if self.timeout.value < 0 else self.timeout.value
-        line = await wait_for(self._readline(), timeout=timeout)
+        try:
+            line = await wait_for(self._readline(), timeout=timeout)
+        except ConnectionResetError:
+            await self.close_connection()
+            return
+
         return line
 
     async def _readline(self):
