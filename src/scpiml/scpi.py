@@ -501,6 +501,11 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         else:
             raise ValueError("Unknown url scheme {}".format(url.scheme))
 
+    async def close_connection(self):
+        self.writer.close()
+        await self.writer.wait_closed()
+        self.connected = False
+
     async def connect(self):
         """Connect to the instrument"""
         await self.open_connection()
@@ -534,6 +539,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         # if self.timeout is negative, wait indefinitely.
         timeout = None if self.timeout.value < 0 else self.timeout.value
         line = await wait_for(self._readline(), timeout=timeout)
+
         return line
 
     async def _readline(self):
@@ -551,7 +557,11 @@ class BaseScpiDevice(ScpiConfigurable, Device):
                 line.append(c)
 
     async def readChar(self):
-        return (await self.reader.read(1))
+        try:
+            return (await self.reader.read(1))
+        except ConnectionError:
+            await self.close_connection()
+            return
 
 
 class ScpiAutoDevice(BaseScpiDevice):
