@@ -28,6 +28,13 @@ except ImportError:
     # Karabo <= 2.10
     use_descriptor = True
 
+if not hasattr(Configurable, "get_root"):
+    # Karabo < 2.13
+    from karabo.native.schema.descriptors import get_instance_parent
+    has_get_root = False
+else:
+    has_get_root = True
+
 
 def decodeURL(url, handle):
     strings = dict(
@@ -75,6 +82,12 @@ class ScpiConfigurable(Configurable):
                     or isinstance(descr, Node)):
                 continue  # the user already decorated a function
             setattr(cls, attr, descr(cls.sender(descr)))
+
+    def get_root(self):
+        if has_get_root:
+            return super().get_root()
+        else:
+            return get_instance_parent(self)
 
     @classmethod
     def sender(cls, descr):
