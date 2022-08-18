@@ -392,7 +392,7 @@ class ScpiConfigurable(Configurable):
             line = await self.get_root().readline()
             reply = line.decode("ascii", errors='ignore')
             if reply:
-                return self.parseResult(descriptor, line.decode("ascii", errors='ignore'))
+                return self.parseResult(descriptor, reply)
             else:
                 return None
         except TimeoutError:
