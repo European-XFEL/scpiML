@@ -380,6 +380,10 @@ class ScpiConfigurable(Configurable):
         return (getattr(descriptor, "queryFormat", self.query_format)
                 .format(alias=descriptor.alias, device=self))
 
+    ascii_decode_errors = 'strict'
+    # set to 'ignore' in the derived classes if they need to be tolerant to
+    # non-ascii chars
+
     async def readQueryResult(self, descriptor):
         """Read the result from a query
 
@@ -390,9 +394,9 @@ class ScpiConfigurable(Configurable):
         """
         try:
             line = await self.get_root().readline()
-            reply = line.decode("ascii")
+            reply = line.decode("ascii", errors=self.ascii_decode_errors)
             if reply:
-                return self.parseResult(descriptor, line.decode("ascii"))
+                return self.parseResult(descriptor, reply)
             else:
                 return None
         except TimeoutError:
