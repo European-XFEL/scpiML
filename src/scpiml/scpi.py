@@ -390,9 +390,9 @@ class ScpiConfigurable(Configurable):
         """
         try:
             line = await self.get_root().readline()
-            reply = line.decode("ascii")
+            reply = line.decode("ascii", errors='ignore')
             if reply:
-                return self.parseResult(descriptor, line.decode("ascii"))
+                return self.parseResult(descriptor, line.decode("ascii", errors='ignore'))
             else:
                 return None
         except TimeoutError:
