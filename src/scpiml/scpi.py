@@ -173,6 +173,9 @@ class ScpiConfigurable(Configurable):
         value = await self.get_root().writeread(
             q, self.readQueryResult(descriptor))
         child = self if child is None else child
+        old_val = getattr(child, descriptor.key)
+        if value != old_val:
+            descriptor.__set__(child, value)
         descriptor.__set__(child, value)
 
     command_format = "{alias} {value}\n"
