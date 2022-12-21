@@ -173,7 +173,13 @@ class ScpiConfigurable(Configurable):
         value = await self.get_root().writeread(
             q, self.readQueryResult(descriptor))
         child = self if child is None else child
-        descriptor.__set__(child, value)
+        old_val = getattr(child, descriptor.key, None)
+        if value != old_val:
+            # the __set__ method might have been overridden
+            # in the derived classes
+            descriptor.__set__(child, value)
+            # TODO this could be refactored, e.g. defining a hook method
+            #  to be optionally implemented in the derived classes
 
     command_format = "{alias} {value}\n"
     commandReadBack = False
