@@ -141,6 +141,13 @@ class ScpiConfigurable(Configurable):
         You may, however, call this method to your likings. But be aware not to
         do this from within the methods just mentioned, as this would destroy
         the locking mechanism.
+
+        Note: if you call sendCommand from within the device code, be aware
+        that the readCommandResult called below is not from the parent. That
+        means if you call sendCommand within a Node readCommandResult from
+        this file is used and not the one possibly overwritten in the main
+        device holding the node, unless readCommandResult is also overwritten
+        again in the Node class.
         """
         if not self.connected:
             return
@@ -232,7 +239,9 @@ class ScpiConfigurable(Configurable):
                     return f"{node.alias}:{leaf.alias}?\n"
 
                 def createNodeCommand(self, leaf, value, node):
-                    return f"{node.alias}:{leaf.alias} {value.value}\n"
+                    value = value.value if isinstance(value, KaraboValue)
+                        else value
+                    return f"{node.alias}:{leaf.alias} {value}\n"
 
         The query and command for the property `source1.offset` will be::
 
@@ -326,7 +335,8 @@ class ScpiConfigurable(Configurable):
         Often devices do not return anything useful, instead one wishes to
         read back the parameter with a query after each setting. This
         can be achieved by setting the `commandReadBack` attribute either
-        globally or per descriptor.
+        globally or per descriptor. In order for that to work the
+        `readCommandResult` needs to return None!
         """
         if not self.readOnCommand:
             return value
