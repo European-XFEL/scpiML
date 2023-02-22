@@ -156,12 +156,16 @@ class ScpiConfigurable(Configurable):
         cmd = self.createChildCommand(descriptor, value, child)
         newvalue = await self.get_root().writeread(
             cmd, self.readCommandResult(descriptor, value))
+        read_back_active = getattr(descriptor, "commandReadBack",
+                                   self.commandReadBack)
         if newvalue is not None:
             child = self if child is None else child
             descriptor.__set__(child, newvalue)
-        elif (getattr(descriptor, "commandReadBack", self.commandReadBack)
-              and value is not None):
+        elif read_back_active and value is not None:
             await self.sendQuery(descriptor, child)
+        elif not read_back_active and value is not None:
+            child = self if child is None else child
+            descriptor.__set__(child, value)
 
     async def sendQuery(self, descriptor, child=None):
         """send a query out
