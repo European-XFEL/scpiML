@@ -118,7 +118,7 @@ class ScpiConfigurable(Configurable):
                     await self.parent.sendCommand(descriptor, value, self)
                 else:
                     await self.parent.sendQuery(descriptor, self)
-            if getattr(descriptor, "readOnConnect", False):
+            if getattr(descriptor, "readOnConnect", self.readOnConnect):
                 await self.parent.sendQuery(descriptor, self)
             if getattr(descriptor, "poll", False):
                 background(self.parent.pollOne(descriptor, self))
@@ -188,6 +188,7 @@ class ScpiConfigurable(Configurable):
 
     command_format = "{alias} {value}\n"
     commandReadBack = False
+    readOnConnect = False
 
     # do not use the following line, it is legacy.
     readOnCommand = True
@@ -497,7 +498,6 @@ class BaseScpiDevice(ScpiConfigurable, Device):
             async with self.lock:
                 self.writer.write(write)
                 return (await read)
-
         return shield(inner())
 
     def data_arrived(self):
