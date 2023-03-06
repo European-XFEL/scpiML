@@ -535,7 +535,18 @@ class BaseScpiDevice(ScpiConfigurable, Device):
 
     async def connect(self):
         """Connect to the instrument"""
-        await self.open_connection()
+        try:
+            await self.open_connection()
+        except ConnectionRefusedError as e:
+            msg = f"Connection failed due to ConnectionRefusedError: {e}"
+            self.status = msg
+            self.state = State.ERROR
+            raise e
+        except ValueError as e:
+            msg = f"Connection failed due to ValueError: {e}"
+            self.status = msg
+            self.state = State.ERROR
+            raise e
         self.state = State.NORMAL
         self.connected = True
         await super().connect(self)
