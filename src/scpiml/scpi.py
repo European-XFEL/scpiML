@@ -118,7 +118,7 @@ class ScpiConfigurable(Configurable):
                     await self.parent.sendCommand(descriptor, value, self)
                 else:
                     await self.parent.sendQuery(descriptor, self)
-            if getattr(descriptor, "readOnConnect", False):
+            if getattr(descriptor, "readOnConnect", self.readOnConnect):
                 await self.parent.sendQuery(descriptor, self)
             if getattr(descriptor, "poll", False):
                 background(self.parent.pollOne(descriptor, self))
@@ -141,6 +141,13 @@ class ScpiConfigurable(Configurable):
         You may, however, call this method to your likings. But be aware not to
         do this from within the methods just mentioned, as this would destroy
         the locking mechanism.
+
+        Note: if you call sendCommand from within the device code, be aware
+        that the readCommandResult called below is not from the parent. That
+        means if you call sendCommand within a Node readCommandResult from
+        this file is used and not the one possibly overwritten in the main
+        device holding the node, unless readCommandResult is also overwritten
+        again in the Node class.
         """
         if not self.connected:
             return
@@ -149,12 +156,16 @@ class ScpiConfigurable(Configurable):
         cmd = self.createChildCommand(descriptor, value, child)
         newvalue = await self.get_root().writeread(
             cmd, self.readCommandResult(descriptor, value))
+        read_back_active = getattr(descriptor, "commandReadBack",
+                                   self.commandReadBack)
         if newvalue is not None:
             child = self if child is None else child
             descriptor.__set__(child, newvalue)
-        elif (getattr(descriptor, "commandReadBack", self.commandReadBack)
-              and value is not None):
+        elif read_back_active and value is not None:
             await self.sendQuery(descriptor, child)
+        elif not read_back_active and value is not None:
+            child = self if child is None else child
+            descriptor.__set__(child, value)
 
     async def sendQuery(self, descriptor, child=None):
         """send a query out
@@ -183,6 +194,7 @@ class ScpiConfigurable(Configurable):
 
     command_format = "{alias} {value}\n"
     commandReadBack = False
+    readOnConnect = False
 
     # do not use the following line, it is legacy.
     readOnCommand = True
@@ -238,7 +250,9 @@ class ScpiConfigurable(Configurable):
                     return f"{node.alias}:{leaf.alias}?\n"
 
                 def createNodeCommand(self, leaf, value, node):
-                    return f"{node.alias}:{leaf.alias} {value.value}\n"
+                    value = value.value if isinstance(value, KaraboValue)
+                        else value
+                    return f"{node.alias}:{leaf.alias} {value}\n"
 
         The query and command for the property `source1.offset` will be::
 
@@ -332,7 +346,8 @@ class ScpiConfigurable(Configurable):
         Often devices do not return anything useful, instead one wishes to
         read back the parameter with a query after each setting. This
         can be achieved by setting the `commandReadBack` attribute either
-        globally or per descriptor.
+        globally or per descriptor. In order for that to work the
+        `readCommandResult` needs to return None!
         """
         if not self.readOnCommand:
             return value
@@ -493,7 +508,6 @@ class BaseScpiDevice(ScpiConfigurable, Device):
             async with self.lock:
                 self.writer.write(write)
                 return (await read)
-
         return shield(inner())
 
     def data_arrived(self):
@@ -531,7 +545,18 @@ class BaseScpiDevice(ScpiConfigurable, Device):
 
     async def connect(self):
         """Connect to the instrument"""
-        await self.open_connection()
+        try:
+            await self.open_connection()
+        except ConnectionRefusedError as e:
+            msg = f"Connection failed due to ConnectionRefusedError: {e}"
+            self.status = msg
+            self.state = State.UNKNOWN
+            raise e
+        except ValueError as e:
+            msg = f"Connection failed due to ValueError: {e}"
+            self.status = msg
+            self.state = State.UNKNOWN
+            raise e
         self.state = State.NORMAL
         self.connected = True
         await super().connect(self)
