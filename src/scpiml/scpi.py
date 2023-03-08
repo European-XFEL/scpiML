@@ -540,12 +540,12 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         except ConnectionRefusedError as e:
             msg = f"Connection failed due to ConnectionRefusedError: {e}"
             self.status = msg
-            self.state = State.ERROR
+            self.state = State.UNKNOWN
             raise e
         except ValueError as e:
             msg = f"Connection failed due to ValueError: {e}"
             self.status = msg
-            self.state = State.ERROR
+            self.state = State.UNKNOWN
             raise e
         self.state = State.NORMAL
         self.connected = True
