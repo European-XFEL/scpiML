@@ -1,3 +1,7 @@
+#
+# Copyright (C) European XFEL GmbH Schenefeld. All rights reserved.
+#
+
 """A base class for SCPI-like devices
 
 SCPI is a standard command set for programmable instruments. Many controllers

@@ -1,9 +1,10 @@
+# Copyright (C) European XFEL GmbH Schenefeld. All rights reserved.
+
 import os.path as op
 import os
 import subprocess
 
 import scpiml
-
 
 BLACKLIST = ['setup.py', '__init__.py']
 
