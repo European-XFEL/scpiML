@@ -1,12 +1,12 @@
 # Copyright (C) European XFEL GmbH Schenefeld. All rights reserved.
 
-import os.path as op
 import os
+import os.path as op
 import subprocess
 
 import scpiml
 
-BLACKLIST = ['setup.py', '__init__.py']
+IGNORELIST = ['setup.py', '__init__.py']
 
 
 def get_python_files():
@@ -18,7 +18,7 @@ def get_python_files():
         if dirpath.endswith('tests'):
             continue
         for fn in filenames:
-            if op.splitext(fn)[-1].lower() == '.py' and fn not in BLACKLIST:
+            if op.splitext(fn)[-1].lower() == '.py' and fn not in IGNORELIST:
                 path = op.join(dirpath, fn)
                 flake_check.append(path)
 

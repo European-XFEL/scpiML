@@ -11,19 +11,19 @@ standard, while most actually do not.
 This Karabo device is very flexible in that it can be modified to communicate
 with many controllers, whether they claim to follow SCPI or not.
 """
-from asyncio import (
-    get_event_loop, Lock, open_connection, Protocol, shield, sleep,
-    StreamReader, StreamReaderProtocol, StreamWriter, TimeoutError, wait_for)
-from itertools import chain
 import os
 import termios
 import urllib
+from asyncio import (
+    Lock, Protocol, StreamReader, StreamReaderProtocol, StreamWriter,
+    TimeoutError, get_event_loop, open_connection, shield, sleep, wait_for)
+from itertools import chain
 
 from karabo import middlelayer
 from karabo.middlelayer import (
-    AccessMode, Assignment, background, Configurable,
-    Device, Double, isSet, KaraboValue, Node, State, String,
-    Unit)
+    AccessMode, Assignment, Configurable, Device, Double, KaraboValue, Node,
+    State, String, Unit, background, isSet)
+
 try:
     # Karabo >= 2.11
     from karabo.middlelayer import string_from_hashtype
