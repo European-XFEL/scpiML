@@ -1,1 +1,1 @@
-from .scpi import BaseScpiDevice, ScpiAutoDevice, ScpiDevice, ScpiConfigurable
+from .scpi import BaseScpiDevice, ScpiAutoDevice, ScpiConfigurable, ScpiDevice

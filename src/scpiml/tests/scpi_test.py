@@ -1,13 +1,13 @@
 # Copyright (C) European XFEL GmbH Schenefeld. All rights reserved.
 
-from asyncio import start_server, sleep
+from asyncio import sleep, start_server
 from contextlib import contextmanager
 from time import time
 
 from karabo.middlelayer import (
-    State, Double, AccessMode, getDevice, Node, Device, Slot, waitUntil,
-    background)
-from karabo.middlelayer_api.tests.eventloop import async_tst, DeviceTest
+    AccessMode, Device, Double, Node, Slot, State, background, getDevice,
+    waitUntil)
+from karabo.middlelayer_api.tests.eventloop import DeviceTest, async_tst
 from scpiml import ScpiAutoDevice, ScpiConfigurable
 
 
