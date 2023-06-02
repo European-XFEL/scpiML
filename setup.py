@@ -5,14 +5,15 @@ from os.path import dirname, join, realpath
 from setuptools import find_packages, setup
 
 # local implementation of device_scm_version from karabo.packaging.versioning
+# looks like: git describe --tags --match "*.*.*" --dirty --always
 ROOT_FOLDER = dirname(realpath(__file__))
 scm_version = lambda: {
-    'local_scheme': lambda v:
-        f'-{v.distance}-{v.node}-dirty' if v.dirty else f'-{v.distance}-{v.node}',
-    'version_scheme': lambda v:
-        f'{v.tag}+' if '-' not in str(v.tag) else f'{v.tag}'.replace('-', '+', 1),
     'root': ROOT_FOLDER,
     'write_to': join(ROOT_FOLDER, 'src', 'scpiml', '_version.py'),
+    'local_scheme': lambda v: '-dirty' if v.dirty else '',
+    'version_scheme': lambda v:
+        f'{v.tag}-{v.distance}-{v.node}'.replace('-', '+', 1) if v.distance \
+        else f'{v.tag}'.replace('-', '+', 1),
 }
 
 setup(name='scpiML',
