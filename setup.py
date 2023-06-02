@@ -12,7 +12,7 @@ scm_version = lambda: {
     'version_scheme': lambda v:
         f'{v.tag}+' if '-' not in str(v.tag) else f'{v.tag}'.replace('-', '+', 1),
     'root': ROOT_FOLDER,
-    'write_to': join(ROOT_FOLDER, 'src', 'hxrmThermalRegulator', '_version.py'),
+    'write_to': join(ROOT_FOLDER, 'src', 'scpiml', '_version.py'),
 }
 
 setup(name='scpiML',
