@@ -4,8 +4,6 @@ from os.path import dirname, join, realpath
 
 from setuptools import find_packages, setup
 
-from karabo.packaging.versioning import device_scm_version
-
 # local implementation of auto-versioning for PyPI-compatible packaging
 ROOT_FOLDER = dirname(realpath(__file__))
 
