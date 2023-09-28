@@ -511,6 +511,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         async def inner():
             async with self.lock:
                 self.writer.write(write)
+                await self.writer.drain()
                 return (await read)
         return shield(inner())
 
@@ -625,6 +626,7 @@ class ScpiAutoDevice(BaseScpiDevice):
     async def onDestruction(self):
         try:
             self.writer.close()
+            await self.writer.wait_closed()
         except AttributeError:
             pass
 
