@@ -7,7 +7,7 @@ from time import time
 from karabo.middlelayer import (
     AccessMode, Device, Double, Node, Slot, State, background, getDevice,
     waitUntil)
-from karabo.middlelayer_api.tests.eventloop import DeviceTest, async_tst
+from karabo.middlelayer.testing import DeviceTest, async_tst
 from scpiml import ScpiAutoDevice, ScpiConfigurable
 
 
