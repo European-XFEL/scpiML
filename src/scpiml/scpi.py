@@ -432,7 +432,7 @@ class ScpiConfigurable(Configurable):
 
     async def pollOne(self, descriptor, child):
         communication_timeout = False
-        while True:
+        while self.connected:
             try:
                 await self.sendQuery(descriptor, child)
                 if descriptor.poll is True:
@@ -452,6 +452,8 @@ class ScpiConfigurable(Configurable):
                     self.status = msg
                     self.logger.error(msg)
                     communication_timeout = True
+            except ConnectionResetError:
+                self.get_root().reader.feed_eof()
 
     def parseResult(self, descriptor, line):
         """Parse the data returned from a query
@@ -510,9 +512,13 @@ class BaseScpiDevice(ScpiConfigurable, Device):
 
         async def inner():
             async with self.lock:
-                self.writer.write(write)
-                await self.writer.drain()
+                try:
+                    self.writer.write(write)
+                    await self.writer.drain()
+                except ConnectionResetError:
+                    self.reader.feed_eof()
                 return (await read)
+
         return shield(inner())
 
     def data_arrived(self):
@@ -544,9 +550,10 @@ class BaseScpiDevice(ScpiConfigurable, Device):
             raise ValueError("Unknown url scheme {}".format(url.scheme))
 
     async def close_connection(self):
+        self.connected = False
+        self.reader.feed_eof()
         self.writer.close()
         await self.writer.wait_closed()
-        self.connected = False
 
     async def connect(self):
         """Connect to the instrument"""
@@ -625,8 +632,7 @@ class ScpiAutoDevice(BaseScpiDevice):
 
     async def onDestruction(self):
         try:
-            self.writer.close()
-            await self.writer.wait_closed()
+            await self.close_connection()
         except AttributeError:
             pass
 
