@@ -1,3 +1,7 @@
+variables:
+  USE_FLAKE: "false"
+  PKG_COVERAGE: "scpiml"
+
 include:
   - project: karabo/gitlabci
     file: .python-ci.yml
