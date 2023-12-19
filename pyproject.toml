@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=6.4", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+root = "."
+write_to = "src/scpiml/_version.py"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project]
+dynamic = ["version"]
+name = "scpiML"
+authors = [
+    {name = "david.hickin@xfel.eu"},
+]
+description = "Karabo device base class for any device that uses SCPI communication protocol."
+readme = "README.rst"
+dependencies = [
+]
