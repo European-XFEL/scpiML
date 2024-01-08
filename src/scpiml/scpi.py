@@ -80,6 +80,7 @@ class ScpiConfigurable(Configurable):
                                     if issubclass(c, ScpiConfigurable))
         cls._scpiattrs = [a for a in attrs
                           if getattr(cls, a).alias is not None]
+        print(cls._scpiattrs)
         for attr in cls._scpiattrs:
             descr = getattr(cls, attr)
             if ("method" in descr.__dict__ or "setter" in descr.__dict__
@@ -93,12 +94,15 @@ class ScpiConfigurable(Configurable):
         else:
             return get_instance_parent(self)
 
-    @classmethod  # FIXME
+    @classmethod
     def sender(cls, descr):
         async def sc(self, value=None):
             root = self.get_root()
             if root.connected:
-                return (await root.sendCommand(descr, value, self))
+                try:
+                    return (await root.sendCommand(descr, value, self))
+                except (TimeoutError, ConnectionError):
+                    pass
             else:
                 setattr(self, descr.key, value)
         return sc
