@@ -126,7 +126,6 @@ class ScpiConfigurable(Configurable):
                 else:
                     await self.parent.sendQuery(descriptor, self)
             if getattr(descriptor, "readOnConnect", self.readOnConnect):
-
                 await self.parent.sendQuery(descriptor, self)
             if getattr(descriptor, "poll", False):
                 background(self.parent.pollOne(descriptor, self))
