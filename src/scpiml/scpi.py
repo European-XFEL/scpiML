@@ -80,7 +80,6 @@ class ScpiConfigurable(Configurable):
                                     if issubclass(c, ScpiConfigurable))
         cls._scpiattrs = [a for a in attrs
                           if getattr(cls, a).alias is not None]
-        print(cls._scpiattrs)
         for attr in cls._scpiattrs:
             descr = getattr(cls, attr)
             if ("method" in descr.__dict__ or "setter" in descr.__dict__
