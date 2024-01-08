@@ -93,7 +93,7 @@ class ScpiConfigurable(Configurable):
         else:
             return get_instance_parent(self)
 
-    @classmethod
+    @classmethod  # FIXME
     def sender(cls, descr):
         async def sc(self, value=None):
             root = self.get_root()
@@ -123,6 +123,7 @@ class ScpiConfigurable(Configurable):
                 else:
                     await self.parent.sendQuery(descriptor, self)
             if getattr(descriptor, "readOnConnect", self.readOnConnect):
+
                 await self.parent.sendQuery(descriptor, self)
             if getattr(descriptor, "poll", False):
                 background(self.parent.pollOne(descriptor, self))
@@ -365,12 +366,11 @@ class ScpiConfigurable(Configurable):
         try:
             await self.get_root().readline()
             return value
-        except TimeoutError:
-            msg = "Timeout while waiting for reply to {} {}".format(
-                descriptor.key, descriptor.alias)
-            self.status = msg
+        except (TimeoutError, ConnectionError) as e:
+            self.status = (f"{e.__class__.__name__} while waiting for reply "
+                           f"to {descriptor.key} {descriptor.alias}")
             self.state = State.ERROR
-            raise TimeoutError(msg)
+            raise
 
     query_format = "{alias}?\n"
 
@@ -431,11 +431,11 @@ class ScpiConfigurable(Configurable):
                 return self.parseResult(descriptor, reply)
             else:
                 return None
-        except TimeoutError:
-            self.status = "Timeout while waiting for reply to {}".format(
-                descriptor.key)
+        except (TimeoutError, ConnectionError) as e:
+            self.status = (f"{e.__class__.__name__} while waiting for reply "
+                           f"to {descriptor.key}")
             self.state = State.ERROR
-            raise TimeoutError
+            raise
 
     async def pollOne(self, descriptor, child):
         communication_timeout = False
@@ -455,12 +455,15 @@ class ScpiConfigurable(Configurable):
             except TimeoutError:
                 if not communication_timeout:
                     # log only once on timeout
-                    msg = "Timeout while polling {}".format(descriptor.key)
+                    msg = f"TimeoutError while polling {descriptor.key}"
                     self.status = msg
                     self.logger.error(msg)
                     communication_timeout = True
-            except ConnectionResetError:
-                self.get_root().reader.feed_eof()
+            except ConnectionError as e:
+                await self.get_root().close_connection()
+                msg = f"{e.__class__.__name__} while polling {descriptor.key}"
+                self.status = msg
+                self.logger.error(msg)
 
     def parseResult(self, descriptor, line):
         """Parse the data returned from a query
@@ -523,9 +526,9 @@ class BaseScpiDevice(ScpiConfigurable, Device):
                     self.writer.write(write)
                     await self.writer.drain()
                 except ConnectionResetError:
-                    self.reader.feed_eof()
+                    await self.close_connection()
+                    raise
                 return (await read)
-
         return shield(inner())
 
     def data_arrived(self):
@@ -578,7 +581,13 @@ class BaseScpiDevice(ScpiConfigurable, Device):
             raise e
         self.state = State.NORMAL
         self.connected = True
-        await super().connect(self)
+        try:
+            await super().connect(self)
+        except ConnectionError as e:
+            await self.close_connection()
+            msg = f"{e.__class__.__name__} while trying to connect to hardware"
+            self.status = msg
+            self.logger.error(msg)
 
     async def readline(self):
         """Read one input line
@@ -626,9 +635,11 @@ class BaseScpiDevice(ScpiConfigurable, Device):
     async def readChar(self):
         try:
             return (await self.reader.read(1))
-        except ConnectionError:
+        except ConnectionError as e:
+            msg = f"{e.__class__.__name__} while reading hardware reply"
+            self.logger.error(msg)
             await self.close_connection()
-            return
+            raise
 
 
 class ScpiAutoDevice(BaseScpiDevice):
