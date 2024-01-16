@@ -100,7 +100,7 @@ class ScpiConfigurable(Configurable):
             if root.connected:
                 try:
                     return (await root.sendCommand(descr, value, self))
-                except (TimeoutError, ConnectionError):
+                except (TimeoutError, ConnectionError, EOFError):
                     pass
             else:
                 setattr(self, descr.key, value)
@@ -368,7 +368,7 @@ class ScpiConfigurable(Configurable):
         try:
             await self.get_root().readline()
             return value
-        except (TimeoutError, ConnectionError) as e:
+        except (TimeoutError, ConnectionError, EOFError) as e:
             self.status = (f"{e.__class__.__name__} while waiting for reply "
                            f"to {descriptor.key} {descriptor.alias}")
             self.state = State.ERROR
@@ -433,7 +433,7 @@ class ScpiConfigurable(Configurable):
                 return self.parseResult(descriptor, reply)
             else:
                 return None
-        except (TimeoutError, ConnectionError) as e:
+        except (TimeoutError, ConnectionError, EOFError) as e:
             self.status = (f"{e.__class__.__name__} while waiting for reply "
                            f"to {descriptor.key}")
             self.state = State.ERROR
@@ -461,7 +461,7 @@ class ScpiConfigurable(Configurable):
                     self.status = msg
                     self.logger.error(msg)
                     communication_timeout = True
-            except ConnectionError as e:
+            except (ConnectionError, EOFError) as e:
                 await self.get_root().close_connection()
                 msg = f"{e.__class__.__name__} while polling {descriptor.key}"
                 self.status = msg
@@ -585,7 +585,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         self.connected = True
         try:
             await super().connect(self)
-        except ConnectionError as e:
+        except (ConnectionError, EOFError) as e:
             await self.close_connection()
             msg = f"{e.__class__.__name__} while trying to connect to hardware"
             self.status = msg
@@ -636,12 +636,18 @@ class BaseScpiDevice(ScpiConfigurable, Device):
 
     async def readChar(self):
         try:
-            return (await self.reader.read(1))
+            c = await self.reader.read(1)
         except ConnectionError as e:
             msg = f"{e.__class__.__name__} while reading hardware reply"
             self.logger.error(msg)
             await self.close_connection()
             raise
+        if not c:
+            msg = "Encountered EOF while reading hardware reply"
+            self.logger.warn(msg)
+            await self.close_connection()
+            raise EOFError(msg)
+        return c
 
 
 class ScpiAutoDevice(BaseScpiDevice):
