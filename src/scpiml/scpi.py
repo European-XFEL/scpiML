@@ -15,8 +15,9 @@ import os
 import termios
 import urllib
 from asyncio import (
-    Lock, Protocol, StreamReader, StreamReaderProtocol, StreamWriter,
-    TimeoutError, get_event_loop, open_connection, shield, sleep, wait_for)
+    CancelledError, Lock, Protocol, StreamReader, StreamReaderProtocol,
+    StreamWriter, TimeoutError, get_event_loop, open_connection, shield, sleep,
+    wait_for)
 from itertools import chain
 
 from karabo import middlelayer
@@ -72,6 +73,7 @@ def decodeURL(url, handle):
 class ScpiConfigurable(Configurable):
     parent = None
     connected = None
+    poll_tasks = []
 
     @classmethod
     def register(cls, name, dict):
@@ -128,7 +130,8 @@ class ScpiConfigurable(Configurable):
             if getattr(descriptor, "readOnConnect", self.readOnConnect):
                 await self.parent.sendQuery(descriptor, self)
             if getattr(descriptor, "poll", False):
-                background(self.parent.pollOne(descriptor, self))
+                self.poll_tasks.append(
+                    background(self.parent.pollOne(descriptor, self)))
 
     async def onConnect(self):
         """ can be implemented in the derived class """
@@ -466,6 +469,8 @@ class ScpiConfigurable(Configurable):
                 msg = f"{e.__class__.__name__} while polling {descriptor.key}"
                 self.status = msg
                 self.logger.error(msg)
+            except CancelledError:
+                return
 
     def parseResult(self, descriptor, line):
         """Parse the data returned from a query
@@ -518,6 +523,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         super().__init__(configuration)
         self.lock = Lock()
         self.allowLF = False
+        self.is_connection_closing = False
 
     def writeread(self, write, read):
         write = write.encode('utf8')
@@ -527,7 +533,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
                 try:
                     self.writer.write(write)
                     await self.writer.drain()
-                except ConnectionResetError:
+                except ConnectionError:
                     await self.close_connection()
                     raise
                 return (await read)
@@ -562,10 +568,19 @@ class BaseScpiDevice(ScpiConfigurable, Device):
             raise ValueError("Unknown url scheme {}".format(url.scheme))
 
     async def close_connection(self):
-        self.connected = False
+        if self.is_connection_closing:
+            return
+        self.is_connection_closing = True
+        for task in self.poll_tasks:
+            task.cancel()
+        self.poll_tasks.clear()
         self.reader.feed_eof()
         self.writer.close()
-        await self.writer.wait_closed()
+        # don't wait_closed() on the writer because it waits indefinitely.
+        # bug in python? https://github.com/python/cpython/issues/83939
+        # await self.writer.wait_closed()
+        self.connected = False
+        self.is_connection_closing = False
 
     async def connect(self):
         """Connect to the instrument"""
