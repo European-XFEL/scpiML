@@ -40,6 +40,12 @@ if not hasattr(Configurable, "get_root"):
 else:
     has_get_root = True
 
+try:
+    from karabo.middlelayer import Registry  # noqa
+    has_registry = True
+except ImportError:
+    has_registry = False
+
 
 def decodeURL(url, handle):
     strings = dict(
@@ -75,9 +81,21 @@ class ScpiConfigurable(Configurable):
     connected = None
     poll_tasks = []
 
+    def get_root(self):
+        if has_get_root:
+            return super().get_root()
+        else:
+            return get_instance_parent(self)
+
     @classmethod
-    def register(cls, name, dict):
-        super().register(name, dict)
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if has_registry:
+            return
+        cls.__chain_registry()
+
+    @classmethod
+    def __chain_registry(cls):
         attrs = chain.from_iterable(c._attrs for c in cls.__mro__
                                     if issubclass(c, ScpiConfigurable))
         cls._scpiattrs = [a for a in attrs
@@ -89,11 +107,10 @@ class ScpiConfigurable(Configurable):
                 continue  # the user already decorated a function
             setattr(cls, attr, descr(cls.sender(descr)))
 
-    def get_root(self):
-        if has_get_root:
-            return super().get_root()
-        else:
-            return get_instance_parent(self)
+    @classmethod
+    def register(cls, name, dict):
+        super().register(name, dict)
+        cls.__chain_registry()
 
     @classmethod
     def sender(cls, descr):
@@ -204,7 +221,7 @@ class ScpiConfigurable(Configurable):
                 #  to be optionally implemented in the derived classes
             except ValueError:
                 msg = f"{descriptor.key} return value {value} is not one " \
-                       "of the valid options."
+                    "of the valid options."
                 self.status = msg
                 self.state = State.ERROR
                 raise ValueError(msg)
