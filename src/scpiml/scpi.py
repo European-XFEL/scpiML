@@ -697,6 +697,15 @@ class ScpiAutoDevice(BaseScpiDevice):
 
 
 class ScpiDevice(BaseScpiDevice):
-    @middlelayer.Slot()
+    @middlelayer.Slot(
+        displayedName="Connect",
+        allowedStates={State.UNKNOWN})
     async def connect(self):
         await super().connect()
+
+    @middlelayer.Slot(
+        displayedName="Disconnect")
+    async def disconnect(self):
+        await self.close_connection()
+        self.state = State.UNKNOWN
+        self.status = "Disconnected"
