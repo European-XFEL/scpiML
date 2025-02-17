@@ -55,6 +55,8 @@
 -  *close_connection*: This methods closes the connection to the instrument, if one is open.
 -  *connect*: This method attempts to establish a connection to the instrument.
    -  It calls *open_connection* and handles potential errors like "ConnectionRefusedError", "ValueError" etc.
+-  *disconnect*: This method closes the connection to the instrument.
+   -  It calls *close_connection*.
 -  *readline*: This method reads one line of input from the device. it handles various line endings (carriage return, line feed, or both, or null byte) and returns the line as a byte string, excluding the line ending.
    -  It can be overridden if the device uses a different line-ending character.
 
