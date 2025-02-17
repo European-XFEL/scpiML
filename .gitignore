@@ -1,4 +1,5 @@
 dist/
 build/
 src/*.egg*
-__pycache__
+__pycache__/
+_version.py
