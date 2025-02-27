@@ -174,7 +174,7 @@ class ScpiConfigurable(Configurable):
             q, self.readQueryResult(descriptor))
         child = self if child is None else child
         old_val = getattr(child, descriptor.key, None)
-        if value != old_val:
+        if value != old_val.value:
             # the __set__ method might have been overridden
             # in the derived classes
             try:
