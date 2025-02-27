@@ -23,28 +23,7 @@ from itertools import chain
 from karabo import middlelayer
 from karabo.middlelayer import (
     AccessMode, Assignment, Configurable, Device, Double, KaraboValue, Node,
-    State, String, Unit, background, isSet)
-
-try:
-    # Karabo >= 2.11
-    from karabo.middlelayer import string_from_hashtype
-    use_descriptor = False
-except ImportError:
-    # Karabo <= 2.10
-    use_descriptor = True
-
-if not hasattr(Configurable, "get_root"):
-    # Karabo < 2.13
-    from karabo.native.schema.descriptors import get_instance_parent
-    has_get_root = False
-else:
-    has_get_root = True
-
-try:
-    from karabo.middlelayer import Registry  # noqa
-    has_registry = True
-except ImportError:
-    has_registry = False
+    State, String, Unit, background, isSet, string_from_hashtype)
 
 
 def decodeURL(url, handle):
@@ -81,21 +60,9 @@ class ScpiConfigurable(Configurable):
     connected = None
     poll_tasks = []
 
-    def get_root(self):
-        if has_get_root:
-            return super().get_root()
-        else:
-            return get_instance_parent(self)
-
     @classmethod
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        if has_registry:
-            return
-        cls.__chain_registry()
-
-    @classmethod
-    def __chain_registry(cls):
         attrs = chain.from_iterable(c._attrs for c in cls.__mro__
                                     if issubclass(c, ScpiConfigurable))
         cls._scpiattrs = [a for a in attrs
@@ -106,11 +73,6 @@ class ScpiConfigurable(Configurable):
                     or isinstance(descr, Node)):
                 continue  # the user already decorated a function
             setattr(cls, attr, descr(cls.sender(descr)))
-
-    @classmethod
-    def register(cls, name, dict):
-        super().register(name, dict)
-        cls.__chain_registry()
 
     @classmethod
     def sender(cls, descr):
@@ -344,12 +306,8 @@ class ScpiConfigurable(Configurable):
         if value is None:
             string_var = ""
         else:
-            if use_descriptor:
-                string_var = descriptor.toString(
-                    descriptor.toKaraboValue(value).value)
-            else:
-                string_var = string_from_hashtype(
-                    descriptor.toKaraboValue(value).value)
+            string_var = string_from_hashtype(
+                descriptor.toKaraboValue(value).value)
         return (getattr(descriptor, "commandFormat", self.command_format)
                 .format(alias=descriptor.alias,
                         device=self,
