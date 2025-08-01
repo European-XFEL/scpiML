@@ -14,7 +14,7 @@ from scpiml import ScpiAutoDevice, ScpiConfigurable
 class ManageDevice:
     def __init__(self, cls):
         self.device = cls(
-            {"url": "socket://127.0.0.1:35232", "_deviceId_": "scpi"})
+            {"url": "socket://127.0.0.1:35232", "deviceId": "scpi"})
 
     async def __aenter__(self):
         await self.device.startInstance()
@@ -30,7 +30,7 @@ class Tests(DeviceTest):
     @classmethod
     @contextmanager
     def lifetimeManager(cls):
-        client = Device({"_deviceId_": "client"})
+        client = Device({"deviceId": "client"})
         cls.server = cls.loop.run_until_complete(
             start_server(cls.connected_cb, "127.0.0.1", 35232))
         with cls.deviceManager(lead=client):
