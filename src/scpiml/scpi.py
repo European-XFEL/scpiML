@@ -463,6 +463,20 @@ class ScpiConfigurable(Configurable):
         """
         return descriptor.fromstring(line)
 
+    async def flush_buffer(self):
+        """Helper function: Flush out remaining content in buffer if any
+        before sending queries to avoid mismatch between query and answer.
+        Can be used to recover from hiccups in communication and having a
+        clean start in the beginning."""
+        while True:
+            try:
+                async with self.lock:
+                    line = await wait_for(self.readline(), 0.5)
+                if not line:
+                    break
+            except TimeoutError:
+                break
+
 
 class BaseScpiDevice(ScpiConfigurable, Device):
     """Base Device Class for SCPI interface """
@@ -670,3 +684,11 @@ class ScpiDevice(BaseScpiDevice):
         await self.close_connection()
         self.state = State.UNKNOWN
         self.status = "Disconnected"
+
+    @middlelayer.Slot(
+        displayedName="Flush Buffer",
+        description="Use to flush the buffer in case of some hickups in "
+                    "communication, e.g. mismatched query/reply pairs.")
+    async def flushBuffer(self):
+        if self.connected:
+            await self.flush_buffer()
