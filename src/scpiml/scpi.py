@@ -59,6 +59,7 @@ class ScpiConfigurable(Configurable):
     parent = None
     connected = None
     poll_tasks = []
+    polling_active = True
 
     @classmethod
     def __init_subclass__(cls, **kwargs):
@@ -421,6 +422,10 @@ class ScpiConfigurable(Configurable):
         communication_timeout = False
         while self.connected:
             try:
+                if not self.polling_active:
+                    # polling was disabled during runtime, skip this poll
+                    await sleep(self.pollingInterval.value)
+                    continue
                 await self.sendQuery(descriptor, child)
                 if descriptor.poll is True:
                     sleep_time = self.pollingInterval.value
