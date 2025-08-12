@@ -571,8 +571,9 @@ class BaseScpiDevice(ScpiConfigurable, Device):
             self.status = msg
             self.state = State.UNKNOWN
             raise e
-        self.state = State.NORMAL
+
         self.connected = True
+
         try:
             await super().connect(self)
         except (ConnectionError, EOFError) as e:
@@ -581,6 +582,8 @@ class BaseScpiDevice(ScpiConfigurable, Device):
             self.status = msg
             self.logger.error(msg)
             raise e
+        # only go to state if all properties have done their connect
+        self.state = State.NORMAL
 
     async def readline(self):
         """Read one input line
