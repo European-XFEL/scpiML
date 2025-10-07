@@ -514,6 +514,9 @@ class BaseScpiDevice(ScpiConfigurable, Device):
 
     def __init__(self, configuration):
         self.connected = False
+        # The initial state after successful connection
+        self.initialConnectedState = State.NORMAL
+
         super().__init__(configuration)
         self.lock = Lock()
         self.allowLF = False
@@ -602,7 +605,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
             self.logger.error(msg)
             raise e
         # only go to state if all properties have done their connect
-        self.state = State.NORMAL
+        self.state = self.initialConnectedState
 
     async def readline(self):
         """Read one input line
