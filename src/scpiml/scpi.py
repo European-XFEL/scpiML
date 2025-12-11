@@ -511,7 +511,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         defaultValue=1.,
         unitSymbol=Unit.SECOND,
         minInc=0.05,
-        maxInc=30.)
+        maxInc=120.)
 
     communicationDelay = Double(
         displayedName="Communication Delay",
