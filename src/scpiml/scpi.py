@@ -22,8 +22,9 @@ from itertools import chain
 
 from karabo import middlelayer
 from karabo.middlelayer import (
-    AccessMode, Assignment, Configurable, Device, Double, KaraboValue, Node,
-    State, String, Unit, background, isSet, string_from_hashtype)
+    AccessLevel, AccessMode, Assignment, Configurable, Device, Double,
+    KaraboValue, Node, State, String, Unit, background, isSet,
+    string_from_hashtype)
 
 
 def decodeURL(url, handle):
@@ -512,6 +513,17 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         minInc=0.05,
         maxInc=30.)
 
+    communicationDelay = Double(
+        displayedName="Communication Delay",
+        description="Optional delay after each query or command write. It can "
+                    "be used to slow down communication with devices which "
+                    "cannot cope with large rates of read/writes.",
+        requiredAccessLevel=AccessLevel.EXPERT,
+        defaultValue=0.,
+        unitSymbol=Unit.SECOND,
+        minInc=0.,
+        maxInc=1.)
+
     def __init__(self, configuration):
         self.connected = False
         # The initial state after successful connection
@@ -533,6 +545,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
                 except ConnectionError:
                     await self.close_connection()
                     raise
+                await sleep(self.communicationDelay.value)
                 return (await read)
         return shield(inner())
 
