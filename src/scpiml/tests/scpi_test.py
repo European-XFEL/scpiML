@@ -69,7 +69,7 @@ class Tests(DeviceTest):
 
         manager = ManageDevice(Device)
         async with manager as device:
-            proxy = await getDevice("scpi")
+            proxy = await getDevice(device.deviceId)
             await self.assertRead(b"I 1.0\n")
             with proxy:
                 proxy.rw = 7
@@ -91,7 +91,7 @@ class Tests(DeviceTest):
             rw.writeOnConnect = True
 
         manager = ManageDevice(Device)
-        async with manager as device:
+        async with manager:
             await self.assertRead(b"I 1.0\n")
             self.writer.write(b"5\n")
             await self.assertRead(b"R 2.0\n")
@@ -110,7 +110,7 @@ class Tests(DeviceTest):
 
         manager = ManageDevice(Device)
         async with manager as device:
-            proxy = await getDevice("scpi")
+            proxy = await getDevice(device.deviceId)
             with proxy:
                 await sleep(0.02)
                 await self.assertRead(b"R?\n")
@@ -135,7 +135,7 @@ class Tests(DeviceTest):
 
         manager = ManageDevice(Device)
         async with manager as device:
-            proxy = await getDevice("scpi")
+            proxy = await getDevice(device.deviceId)
             with proxy:
                 await sleep(0.02)
                 await self.assertRead(b"I 1.0\n")
@@ -165,7 +165,7 @@ class Tests(DeviceTest):
 
         manager = ManageDevice(Device)
         async with manager as device:
-            proxy = await getDevice("scpi")
+            proxy = await getDevice(device.deviceId)
             with proxy:
                 await sleep(0.02)
                 await self.assertRead(b"RW?\n")
@@ -178,7 +178,8 @@ class Tests(DeviceTest):
             rw = Double(alias="RW", defaultValue=1)
             rw.writeOnConnect = True
             rw_special = Double(alias="RWS", defaultValue=2)
-            rw_special.commandFormat = "mayu {alias} {device.deviceId} {value}\n"
+            rw_special.commandFormat = (
+                "mayu {alias} {device.deviceId} {value}\n")
             rw_special.writeOnConnect = True
 
             readonly = Double(accessMode=AccessMode.READONLY, alias="R")
@@ -191,7 +192,7 @@ class Tests(DeviceTest):
             command_format = "rino {alias} {device.deviceId} {value}\n"
 
         manager = ManageDevice(Device)
-        async with manager as device:
+        async with manager:
             await self.assertRead(b"rino RW scpi 1.0\n")
             self.writer.write(b"7\n")
             await self.assertRead(b"mayu RWS scpi 2.0\n")
@@ -210,7 +211,7 @@ class Tests(DeviceTest):
 
         manager = ManageDevice(Device)
         async with manager as device:
-            proxy = await getDevice("scpi")
+            proxy = await getDevice(device.deviceId)
             with proxy:
                 await sleep(0.02)
                 t0 = time()
@@ -275,7 +276,9 @@ class Tests(DeviceTest):
                 return f"{self.get_prefix()}{node.alias}.{leaf.alias}?\n"
 
             def createNodeCommand(self, leaf, value, node):
-                return f"{self.get_prefix()}{node.alias}.{leaf.alias} {value.value}\n"
+                return (
+                    f"{self.get_prefix()}{node.alias}.{leaf.alias} "
+                    f"{value.value}\n")
 
         class SubChannel(FormatNode):
             initonly = Double(accessMode=AccessMode.INITONLY, alias="I",
@@ -301,7 +304,7 @@ class Tests(DeviceTest):
             parentProp.readOnConnect = True
 
         async with ManageDevice(Device) as device:
-            proxy = await getDevice("scpi")
+            proxy = await getDevice(device.deviceId)
             with proxy:
                 await sleep(0.02)
                 await self.assertRead(b"chef.souschef.I 1.0\n")

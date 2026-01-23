@@ -1,1 +1,2 @@
-from .scpi import BaseScpiDevice, ScpiAutoDevice, ScpiConfigurable, ScpiDevice
+from .scpi import (  # Noqa: F401
+    BaseScpiDevice, ScpiAutoDevice, ScpiConfigurable, ScpiDevice)
