@@ -673,7 +673,7 @@ class BaseScpiDevice(ScpiConfigurable, Device):
             raise
         if not c:
             msg = "Encountered EOF while reading hardware reply"
-            self.logger.warn(msg)
+            self.logger.warning(msg)
             await self.close_connection()
             raise EOFError(msg)
         return c
