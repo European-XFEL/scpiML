@@ -9,6 +9,20 @@ write_to = "src/scpiml/_version.py"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.isort]
+combine_as_imports = true
+include_trailing_comma = false
+# 4 - Hanging Grid, standard
+multi_line_output = 4
+line_length = 79
+known_first_party = ["karabo", "scpiml"]
+src_paths = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "module"
+asyncio_default_test_loop_scope = "module"
+asyncio_mode = "auto"
+
 [project]
 dynamic = ["version"]
 name = "scpiML"
