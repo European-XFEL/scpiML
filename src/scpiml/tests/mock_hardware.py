@@ -14,8 +14,8 @@
 #
 # To use it your tests it could look like this:
 
-# @pytest_asyncio.fixture(scope="module")
-# async def interface(event_loop: event_loop):
+# @pytest_asyncio.fixture()
+# async def interface():
 #     async with mock_server(Keithley2470, RESPONSES, SEPARATOR) as hw_device:
 #         hw_server, ctx = hw_device
 #         device = ctx["device"]

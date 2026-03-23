@@ -1,4 +1,5 @@
 variables:
+  USE_LEGACY_PYTEST: "false"
   PKG_COVERAGE: "scpiml"
 
 include:
