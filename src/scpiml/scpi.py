@@ -408,7 +408,7 @@ class ScpiConfigurable(Configurable):
         """
         try:
             line = await self.get_root().readline()
-            reply = line.decode("ascii", errors=self.ascii_decode_errors)
+            reply = self.scpi_data_decoder(line)
             if reply:
                 return self.parseResult(descriptor, reply)
             else:
@@ -483,6 +483,24 @@ class ScpiConfigurable(Configurable):
             except TimeoutError:
                 break
 
+    def scpi_data_encoder(self, data_to_write):
+        """SCPI data encoder to allow encoding of input data before
+        transmission.
+        For some devices like ThorlabsOPM, SCPI data is encoded in a custom
+        format. Such custom encoding can be done in the device by overwriting
+        this function.
+        """
+        return data_to_write.encode('utf8')
+
+    def scpi_data_decoder(self, data_to_read):
+        """SCPI data decoder to allow decoding of received data.
+        For some devices, SCPI data may be encoded in a custom
+        format. Such custom decoding can be done in the device by overwriting
+        this function.
+        """
+        return data_to_read.decode("ascii",
+                                   errors=self.ascii_decode_errors)
+
 
 class BaseScpiDevice(ScpiConfigurable, Device):
     """Base Device Class for SCPI interface """
@@ -535,12 +553,12 @@ class BaseScpiDevice(ScpiConfigurable, Device):
         self.is_connection_closing = False
 
     def writeread(self, write, read):
-        write = write.encode('utf8')
+        data_to_write = self.scpi_data_encoder(write)
 
         async def inner():
             async with self.lock:
                 try:
-                    self.writer.write(write)
+                    self.writer.write(data_to_write)
                     await self.writer.drain()
                 except ConnectionError:
                     await self.close_connection()
