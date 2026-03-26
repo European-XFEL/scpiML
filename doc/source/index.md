@@ -23,8 +23,8 @@ This overview provides a step-by-step guide to implement code for controlling a 
 
 The following sections describe in detail, the concepts and implementation:
 
-   - [scpiML Package Reference](https://git.xfel.eu/karaboDevices/scpiML/-/blob/add/doc/doc/source/scpi_ml_package.md) - Explains the usage of the scpiML package, detailing classes, methods and their roles in managing SCPI-devices
-   - [How to Implement a SCPI Device](https://git.xfel.eu/karaboDevices/scpiML/-/blob/add/doc/doc/source/general_device_implementation.md) - Provides general steps to follow for the implementation of SCPI-device.
-   - [An Example of Device-Specific Implementation](https://git.xfel.eu/karaboDevices/scpiML/-/blob/add/doc/doc/source/device_specific_implementation.md) - Provides SCPI implementation for High-Voltage device, including class structure, SCPI command formats, and customization of base methods.
+   - [scpiML Package Reference](https://git.xfel.eu/karabodevices3/scpiml/-/blob/add/doc/doc/source/scpi_ml_package.md) - Explains the usage of the scpiML package, detailing classes, methods and their roles in managing SCPI-devices
+   - [How to Implement a SCPI Device](https://git.xfel.eu/karabodevices3/scpiml/-/blob/add/doc/doc/source/general_device_implementation.md) - Provides general steps to follow for the implementation of SCPI-device.
+   - [An Example of Device-Specific Implementation](https://git.xfel.eu/karabodevices3/scpiml/-/blob/add/doc/doc/source/device_specific_implementation.md) - Provides SCPI implementation for High-Voltage device, including class structure, SCPI command formats, and customization of base methods.
 
 

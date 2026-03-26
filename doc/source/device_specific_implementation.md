@@ -1,6 +1,6 @@
 # AN EXAMPLE OF DEVICE SPECIFIC IMPLEMENTATION
 
--  The device package can be found [here](https://git.xfel.eu/karaboDevices/isegshrhvpowersupply)
+-  The device package can be found [here](https://git.xfel.eu/karabodevices3/isegshrhvpowersupply)
 -  This is a walk-through of the implementation of a high voltage power supply device using the SCPI protocol.
 
 

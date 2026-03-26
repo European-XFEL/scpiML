@@ -1,4 +1,5 @@
 variables:
+  DOC_DIRECTORY: "doc/source"
   USE_LEGACY_PYTEST: "false"
   PKG_COVERAGE: "scpiml"
 
