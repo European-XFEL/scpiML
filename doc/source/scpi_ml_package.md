@@ -1,8 +1,8 @@
 # SCPIML karabo Package
 
--  The scpiML package can be found [here](https://git.xfel.eu/karaboDevices/scpiML)
+-  The scpiML package can be found [here](https://git.xfel.eu/karabodevices3/scpiml)
 -  In order to make the device visible to any device-server, install the package to Karabo’s own Python environment.
--  After having installed and activated Karabo [see here](https://rtd.xfel.eu/docs/karabo/en/latest/), use the karabo utility script: *karabo develop scpiML*.
+-  After having installed and activated Karabo [see here](https://karabo.pages.xfel.eu/Framework/installation/binary.html), use the karabo utility script: *karabo develop scpiML*.
 
 
 ## Base Class Overview
@@ -45,7 +45,10 @@
    -  Must be implemented in the derives class if nodes are needed.
 -  *parseResult*: This method parse the data returned from a query.
    -  It can be overridden in the base class if the device use a non-standard format.
-
+-  *scpi_data_encoder*: A device may require that SCPI commands or queries are encapsulated in a custom vendor-defined protocol. This method can be used to custom encode queries or commands, before they are sent to the device.
+   -  It can be overridden in the derived class if the device uses vendor-specific protocol.
+-  *scpi_data_decoder*: A device may respond to received commands or queries in an encoded response format. This method can be used to custom decode SCPI responses from the device.
+   -  It can be overridden in the derived class if the device requires custom response decoding.
    
 ## BaseScpiDevice Useful Methods
 
